@@ -1,8 +1,8 @@
 ---
 name: c-iwyu-audit
 description: Use when writing, reviewing, or cleaning up C code in this embedded codebase. Covers strict IWYU include audits, uart.c commentary matching led.c, and the C99-compatible subset of the Google style guide.
-placement: prepend
-order: 50
+placement: append
+order: 60
 ---
 
 # Strict IWYU audit and example-comment style

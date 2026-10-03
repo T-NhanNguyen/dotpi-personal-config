@@ -2,7 +2,7 @@
 name: embedded-debug-swo-itm
 description: Use when debugging embedded hardware behavior, pin readback, or SWO/ITM printf output on ARM Cortex-M. Covers suspecting your own harness first, lock registers, direct SWD testing, and interpreting ITM captures.
 placement: append
-order: 30
+order: 40
 ---
 
 # Embedded debugging: harness first, then hardware
