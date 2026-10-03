@@ -26,6 +26,28 @@ Local installs load in place, without copying files: edits here take effect
 after `/reload` in Pi. npm/git installs use copies managed by Pi rather than
 loading this working checkout.
 
+### Required: link the bundled subagent definitions
+
+**Installing the package loads the subagent extension, but does not install its
+agent definitions.** Without this step, calls to `explore` or `worker` fail with
+`Unknown agent` / `Available agents: none`.
+
+For this local checkout, run once:
+
+```sh
+ln -s /Users/nhan/ai-workspace/dotpi-personal-config/agents \
+  /Users/nhan/.pi/agent/agents
+```
+
+The extension looks for definitions in `~/.pi/agent/agents`. This symbolic link
+points that directory at the repo's `agents/`, without copying or moving files;
+edits to the definitions stay in sync. If your checkout is elsewhere, use its
+absolute `agents/` path instead. Keep the checkout in place or update the link
+if you move it.
+
+If `~/.pi/agent/agents` already exists, do not overwrite it: copy or symlink the
+individual `.md` files into that directory instead.
+
 ## What loads
 
 All bundled extensions are auto-loaded, including `extensions/prompt-snippets/`

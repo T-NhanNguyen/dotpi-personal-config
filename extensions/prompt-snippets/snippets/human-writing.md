@@ -49,7 +49,3 @@ Write only the requested text. No preamble, no summary, no closing remarks.
 4. Any passive voice with a known actor? Make it active.
 5. Any "-ing" main verb, nominalization ("perform an analysis"), or phrasal verb ("spin up")? Replace with a plain verb.
 6. Same thing named two ways? Pick one name.
-
-The mechanical rules above are lintable and are what removes slop. Full STE also needs human judgment (the right technical noun, whether a sentence "makes good sense") — a checker cannot certify that, and slop is not about that. This skill fixes the FORM of slop. It cannot make a hollow paragraph true.
-
-Free official standard (do not paste it in full; it is copyrighted): https://asd-ste100.org
