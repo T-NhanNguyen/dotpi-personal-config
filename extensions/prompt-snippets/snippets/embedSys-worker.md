@@ -1,7 +1,7 @@
 ---
 name: embedded-user-context-first
 description: Use when the user supplies pin, peripheral, or register details for an embedded target and asks for code or help. Work from the given details first; only consult the datasheet with permission.
-placement: prepend
+placement: append
 order: 50
 ---
 

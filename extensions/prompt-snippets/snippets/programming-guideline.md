@@ -1,8 +1,8 @@
 ---
 name: programming-guidelines
 description: Language-neutral programming standards grounded in correctness, explicit contracts, project conventions, practical trade-offs, safe testing, and strict task scope. Use when implementing features, reviewing code, or writing scripts.
-placement: prepend
-order: 40
+placement: append
+order: 20
 ---
 
 # Programming Guidelines
