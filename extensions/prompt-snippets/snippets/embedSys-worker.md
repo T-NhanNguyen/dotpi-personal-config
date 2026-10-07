@@ -1,6 +1,6 @@
 ---
 name: embedded-user-context-first
-description: Use when the user supplies pin, peripheral, or register details for an embedded target and asks for code or help. Work from the given details first; only consult the datasheet with permission.
+description: Set of rules for working with embedded target. When the user supplies pin, peripheral, or register details, work from the given details first; only consult the datasheet with permission.
 placement: append
 order: 50
 ---
@@ -12,6 +12,7 @@ When the user gives pin or hardware details that normally live in the datasheet,
 
 - Do not go hunting for the datasheet or other sources on your own. Unrequested research wastes effort and can send you and the user down the wrong path.
 - If extra research would help, say what you would look up and why, then wait for the user's OK.
+- Focus on the range of int on the target, not an assumed fixed bits (16 or 32).
 
 ## Exception: high-risk registers
 If the user's request conflicts with a protected or lock-gated register (e.g. GPIOLOCK / GPIOCR-gated pins such as NMI or JTAG pins):

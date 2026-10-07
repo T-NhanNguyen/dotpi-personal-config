@@ -63,6 +63,7 @@ Supplemental design advice (not Google rules), adapted to C99 from
 
 ## Macros
 - Prefer `static inline` functions, `enum`, and `static const` over macros.
+- For `enums` the choice of the underlying type is implementation-defined. However, the type must not be larger than int unless a value cannot fit in an int or unsigned int
 - When a macro is needed (e.g. register addresses and bit masks), give it a module prefix, parenthesize every argument and the whole expansion, and `#undef` it if it is only for local use.
 - Do not define macros whose expansion has unbalanced braces or hides control flow.
 
@@ -72,6 +73,9 @@ Supplemental design advice (not Google rules), adapted to C99 from
 - One statement per line. Always give `switch` a `default`, and mark intentional fall-through with a `/* fall through */` comment.
 - Pointer alignment: either `char *p` or `char* p`, but be consistent within a file (follow the codebase).
 - Spaces around binary operators and after keywords (`if (x)`, not `if(x)`).
+- Small offsets, bit indices, small masks (fit int) should be represented with enums
+- Full 32-bit base addresses (top bits set) should be represented with #define / static const uint32_t
+- Full-width magic keys/masks (bit 31 or > INT_MAX) should be represented with #define / typed constant
 
 ## Comments
 - `//` and `/* */` are both valid; stay consistent with the file.
