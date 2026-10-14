@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose implementation agent for substantial delegated coding tasks; can inspect, edit, and write tests autonomously
-model: opencode-go/space-bunny-free:xhigh
+model: openai/gpt-6.1-sol:medium
 tools: read, write, edit, bash, grep, find, ls
 ---
 

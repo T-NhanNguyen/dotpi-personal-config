@@ -1,7 +1,7 @@
 ---
 name: transcript-review
 description: Simple YouTube transcript reviewer for narrowly scoped, source-grounded Markdown edits
-model: openai/gpt-6.1-sol:medium
+model: deepseek/deepseek-v4.1-flash:low
 tools: youtube_transcript, read, edit, bash
 ---
 

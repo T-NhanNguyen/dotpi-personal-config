@@ -1,7 +1,7 @@
 ---
 name: test-writer
 description: Propose deliberate, intent-bound test plans that satisfy the shared test-merit criteria
-model: opencode-go/space-bunny-free:xhigh
+model: openai/gpt-6.1-sol:medium
 tools: read, grep, find, ls, bash
 references:
   - references/test-integrity.md

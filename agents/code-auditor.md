@@ -1,7 +1,7 @@
 ---
 name: code-auditor
 description: Review, correct, and verify implementation using programming and applicable C audit guidance
-model: opencode-go/space-bunny-free:xhigh
+model: openai/gpt-6.1-sol:medium
 tools: read, write, edit, bash, grep, find, ls, subagent
 references:
   - ../extensions/prompt-snippets/snippets/programming-guideline.md

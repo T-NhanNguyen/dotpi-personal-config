@@ -1,7 +1,7 @@
 ---
 name: documentation-reviewer
 description: Review, correct, and validate changed documentation against the writing snippet and actual implementation
-model: opencode-go/space-bunny-free:xhigh
+model: openai/gpt-6.1-sol:medium
 tools: read, write, edit, bash, grep, find, ls
 references:
   - ../extensions/prompt-snippets/snippets/human-writing.md

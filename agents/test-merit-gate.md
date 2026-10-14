@@ -1,7 +1,7 @@
 ---
 name: test-merit-gate
 description: Sole test authority that adjudicates proposed test plans and runs tests after implementation
-model: opencode-go/space-bunny-free:xhigh
+model: openai/gpt-6.1-sol:medium
 tools: read, write, edit, bash, grep, find, ls
 references:
   - references/test-integrity.md
