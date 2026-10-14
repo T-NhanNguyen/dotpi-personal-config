@@ -15,6 +15,7 @@ export interface AgentConfig {
 	model?: string;
 	/** Explicit user preference applied before spawning; never inherited from parent thinking. */
 	thinking?: string;
+	references?: string[];
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
@@ -51,7 +52,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+		const { frontmatter, body } = parseFrontmatter<Record<string, string> & { references?: unknown }>(content);
 
 		if (!frontmatter.name || !frontmatter.description) {
 			continue;
@@ -62,11 +63,18 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			.map((t: string) => t.trim())
 			.filter(Boolean);
 
+		const declaredReferences = frontmatter.references;
+		const references = (Array.isArray(declaredReferences) ? declaredReferences : [declaredReferences])
+			.filter((ref): ref is string => typeof ref === "string")
+			.map((ref) => ref.trim())
+			.filter(Boolean);
+
 		agents.push({
 			name: frontmatter.name,
 			description: frontmatter.description,
 			tools: tools && tools.length > 0 ? tools : undefined,
 			model: frontmatter.model,
+			references: references.length > 0 ? references : undefined,
 			systemPrompt: body,
 			source,
 			filePath,

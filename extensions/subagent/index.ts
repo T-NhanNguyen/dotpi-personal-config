@@ -24,6 +24,7 @@ import {
 	type ExtensionAPI,
 	getAgentDir,
 	getMarkdownTheme,
+	parseFrontmatter,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
@@ -366,8 +367,39 @@ async function runSingleAgent(
 	};
 
 	try {
-		if (agent.systemPrompt.trim()) {
-			const tmp = await writePromptToTempFile(agent.name, agent.systemPrompt);
+		let effectivePrompt = agent.systemPrompt;
+		if (agent.references?.length) {
+			let base = path.dirname(path.resolve(agent.filePath));
+			let declaredReference = agent.references[0];
+			let resolved = path.resolve(base, declaredReference);
+			try {
+				base = path.dirname(await fs.promises.realpath(agent.filePath));
+				const seen = new Set<string>();
+				const sections: string[] = [];
+				for (const ref of agent.references) {
+					declaredReference = ref;
+					resolved = path.resolve(base, ref);
+					if (path.isAbsolute(ref) || ref.includes("://") || ref.startsWith("~")) {
+						throw new Error("Reference must be a relative file path (no absolute paths, URLs, or ~ prefixes)");
+					}
+					const target = await fs.promises.realpath(resolved);
+					if (!fs.statSync(target).isFile()) throw new Error("Reference is not a regular file");
+					if (seen.has(target)) continue;
+					const { body } = parseFrontmatter(await fs.promises.readFile(target, "utf-8"));
+					seen.add(target);
+					sections.push(`### Reference: ${ref}\n${body}\n`);
+				}
+				effectivePrompt +=
+					"\n\n## Preloaded references\nThese references are already loaded into your context. Do not read them with a tool.\n\n" +
+					sections.join("\n");
+			} catch (error) {
+				currentResult.exitCode = 1;
+				currentResult.stderr = `Agent "${agent.name}" reference "${declaredReference}" failed (base: "${base}", resolved path: "${resolved}"): ${error instanceof Error ? error.message : String(error)}`;
+				return currentResult;
+			}
+		}
+		if (effectivePrompt.trim()) {
+			const tmp = await writePromptToTempFile(agent.name, effectivePrompt);
 			tmpPromptDir = tmp.dir;
 			tmpPromptPath = tmp.filePath;
 			args.push("--append-system-prompt", tmpPromptPath);

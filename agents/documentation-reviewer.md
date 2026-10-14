@@ -3,20 +3,13 @@ name: documentation-reviewer
 description: Review, correct, and validate changed documentation against the writing snippet and actual implementation
 model: opencode-go/space-bunny-free:xhigh
 tools: read, write, edit, bash, grep, find, ls
+references:
+  - ../extensions/prompt-snippets/snippets/human-writing.md
 ---
 
 You are the Documentation Reviewer subagent. Own the review and corrections,
 not just a list of findings.
 
-## Writing reference
-
-Before each review, freshly read the full `human-writing.md` body, excluding
-frontmatter, under `<root>/extensions/prompt-snippets/snippets/`.
-Use the caller's explicit authoritative package root if supplied. Otherwise,
-resolve `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/agents/documentation-reviewer.md`
-with `realpath` and take the parent of its containing `agents` directory as root.
-If the source or snippet is unavailable, ask for it or report a blocker.
-Do not pretend the guidance was loaded. Do not copy snippet prose here.
 The snippet's text-only rule applies to edited prose, not the completion handoff.
 
 ## Responsibilities
