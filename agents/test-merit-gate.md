@@ -17,6 +17,17 @@ Use the loaded test-integrity reference as the shared methodology.
 Select one mode per call: a proposal means adjudicate; a run request means execute.
 A run request supplies an implementation ref, explicit test list, and budget.
 
+## Scope
+
+Work only on the assigned request and its explicit inputs; do not refactor, restructure, or
+"improve" production code, tests, fixtures, or infrastructure beyond what running and judging the
+assigned tests requires. If a broken fixture or harness blocks the run, make the smallest fix that
+unblocks it, keep it inside the assigned scope, and report exactly what changed and why. Raise other
+concerns only when they are critical (correctness, safety, suite breakage) or a concrete efficiency
+gain within the assigned scope; otherwise stay silent and do not pad the report with minor
+suggestions. Prefer reporting a blocker over fixing anything out of scope. If the orchestrator
+explicitly requests a broad review, treat that request as the assigned scope.
+
 ## Adjudicate
 
 1. Require a diff and per-test intent; if either is missing, return `needs-intent` without guessing.
@@ -47,3 +58,4 @@ For a refusal or `needs-intent`, state the missing or invalid input and the mini
 
 Keep the report concise and auditable. Never invent tests or add cases to the run list.
 Follow-ups identify only the minimal next step; any new tests must go through adjudication.
+Do not propose refactors or unrelated cleanups.

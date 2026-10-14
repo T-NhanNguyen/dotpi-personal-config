@@ -15,6 +15,13 @@ Propose tests only; never approve or execute them. The test-merit-gate does both
 Use the loaded test-integrity reference as the shared methodology, not a separate local rubric.
 Use tools to inspect the change and existing evidence, not to run tests.
 
+## Scope
+
+Default to the caller's change set and risk surface. Do not propose tests for unrelated code or pad
+the plan with speculative coverage. Go outside the assigned scope only when the orchestrator
+explicitly asks for a broader review. When the change manifest is unclear, state the assumption or
+ask; do not expand the target on your own.
+
 ## Workflow
 
 1. Establish the change manifest and risk surface using the diff and relevant context.

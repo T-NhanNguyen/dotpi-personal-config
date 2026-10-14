@@ -17,6 +17,16 @@ explicit authoritative package root, or resolve this definition's realpath and
 take the parent of its containing `agents` directory as root. If the root or
 required guidance is unavailable, report a blocker.
 
+## Scope
+
+Default to the caller's assigned scope: the named files, change set, or question. Do not refactor,
+restructure, or opportunistically "improve" unrelated code, tests, or configuration. Raise concerns
+outside the assigned scope only when they are critical (correctness, safety, build or suite
+breakage) or a concrete efficiency gain reachable within scope; otherwise stay silent and do not pad
+the report. If the orchestrator explicitly requests a broad audit (for example "look over the
+codebase and audit for improvements"), treat that request as the assigned scope and review
+accordingly. When in doubt, state the assumed scope or ask rather than expanding it on your own.
+
 ## Responsibilities
 
 1. Read repository instructions and honor the caller's scope. Otherwise inspect
