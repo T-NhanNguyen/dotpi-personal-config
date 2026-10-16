@@ -1,51 +1,59 @@
 ---
-name: ste-writing
-description: Rewrite prose (docs, READMEs, PR descriptions, error messages, release notes, comments — never code) into ASD-STE100 Simplified Technical English to remove "AI slop". Use when asked to make writing not sound like AI, make docs clear or plain, enforce a controlled writing style, or write technical documentation that reads human. Two modes — strict (procedures/safety) and STE-flavored (general prose).
+name: human-writing
+description: Rewrite prose (technical docs, READMEs, PR text, error messages, release notes, agent reports, comments — never code) into two layered writing stuctured, that is easy to scan and hold in your head. clean up agent or sub-agent report text, Use when asked to make writing not sound like AI, or make docs clear and consistent.
 placement: append
 order: 10
 ---
 
-# ste-writing
+# human-writing
 
-Write prose in ASD-STE100 Simplified Technical English. This applies to documentation, READMEs, pull-request text, error messages, release notes, and comments. It does not apply to code, identifiers, or command syntax. It is not for marketing copy, essays, or anything that needs a voice — STE strips voice on purpose.
+Rewrite any prose into 2 layered structure, ASD-STE100 Simplified Technical English and clear, mapped out text. The bar: the reader should be able to inferred and comprehend it on first read, builds one clear mental model, and never re-reads a sentence to parse it.
+
+Applies to any prose. Never code, identifiers, or command syntax. Not for marketing copy.
 
 ## Rules
 
+SENTENCES
+- Complete, plain sentences. No em-dash staccato, no rhetorical fragments, no staccato triads. that cadence forces re-reading and is a known AI tell.
+- The em dash is banned. Use periods and commas.
+- One idea per sentence. Short sentences — around 25 words. A longer one is fine only as a clean parallel list of concrete specifics, not stacked clauses.
+- No semicolons. Write two sentences.
+- Active voice with the actor named. "the parser reads the file", not "the file is read by the parser".
+- No stacked auxiliaries. Not "it is important to note that this may help to improve". Say what is, or cut the sentence.
+
 WORDS
-- Use one name for one thing. Do not call the same item by two different names.
-- Use the short common word: start (not begin/commence/initiate), use (not utilize/leverage), help (not facilitate), make sure (not ensure), before (not prior to), after (not subsequent to), about (not regarding/concerning), get (not obtain/acquire), show (not demonstrate), also (not additionally/furthermore/moreover).
-- Give each word one meaning. "fall" means to move down, not to decrease.
-- No marketing adjectives: seamless, robust, powerful, cutting-edge, effortless, world-class, next-generation, revolutionary.
+- Concrete specifics instead of adjectives. Delete words that claim quality (seamless, robust, powerful, cutting-edge, effortless, world-class, revolutionary, next-generation). Replace with the detail that earns the claim, or cut the word. ("impactful and valuable" became the actual specs.)
+- One name for one thing. Do not call the same item by two different names.
+- Short common word where it does not flatten meaning: start (not commence/initiate), use (not utilize/leverage), help (not facilitate), make sure (not ensure), before (not prior to), after (not subsequent to), about (not regarding/concerning), get (not obtain/acquire), show (not demonstrate).
+- Contractions are fine — they are how a person sounds.
 - American spelling.
 
-VERBS
-- Active voice. "the parser reads the file", not "the file is read by the parser".
-- Use a verb for an action. "analyze the log", not "perform an analysis of the log".
-- No stacked auxiliaries. Not "it is important to note that this may help to improve". Write "this improves X".
-- No "-ing" main verb where a simple tense works.
-
-SENTENCES
-- One instruction per sentence. Max 20 words (instruction), max 25 (descriptive).
-- No contractions. Use articles: a, an, the, this, these.
-
-PUNCTUATION
-- No semicolons. Write two sentences. (Note: the em dash is not banned by STE, only the semicolon is — add "no em dash" yourself if you want it gone.)
+TONE
+- Tone down, not up. No lofty register — name the concrete thing instead of the grand claim.
+- Say the direct thing. Name it; do not gesture at it.
+- State only what you know. Soften what is still open.
+- No defensive framing. Do not raise a doubt the reader did not have.
+- Keep the motive in. The reason something happened is content — never cut it for tightness.
 
 STRUCTURE
-- One topic per paragraph, max six sentences. For steps, use a numbered vertical list, one action per item, imperative form. Put a condition before its command.
-
-Write only the requested text. No preamble, no summary, no closing remarks.
+- One topic per paragraph, max six sentences.
+- Lead with the outcome, then the details.
+- No redundancy. Each section adds information; do not restate what the surrounding text already said.
+- For steps: numbered vertical list, one action per item, imperative form. Condition before its command.
+- Keep terminology and cadence consistent across the text.
 
 ## Modes
 
-- **strict** — procedures, runbooks, safety text, error messages: apply every rule and both length caps.
-- **STE-flavored** — general prose (READMEs, PR descriptions, docs): apply the sentence, paragraph, active-voice, and no-phrasal-verb discipline; relax the ~900-word dictionary lockdown so the text keeps enough range to read naturally.
+- **review** — check a draft without rewriting it: flag issues, give paste-ready snippet fixes, change only what is asked about. Never rewrite wholesale.
+- **rewrite** (default when text is handed over for cleanup) — revise the full text under these rules. Keep every fact and claim exact; change only wording, cadence, and structure. Output only the revised text: no preamble, no summary, no closing remarks.
 
 ## Self-lint (run before returning text)
 
-1. Any sentence over 20 words? Split it.
-2. Any semicolon? Replace with a period.
-3. Any contraction? Expand it.
-4. Any passive voice with a known actor? Make it active.
-5. Any "-ing" main verb, nominalization ("perform an analysis"), or phrasal verb ("spin up")? Replace with a plain verb.
-6. Same thing named two ways? Pick one name.
+1. Any em dash? Remove it.
+2. Any fragment or staccato triad? Complete the sentence.
+3. Any adjective claiming quality? Replace with the specific detail, or cut it.
+4. Any lofty register? Replace with the concrete thing.
+5. Any defensive framing, inflated claim, or redundancy? Cut it.
+6. Any passive voice with a known actor? Make it active.
+7. Same thing named two ways? Pick one name.
+8. Any stacked auxiliaries or hedge pile-up? Say it plainly, or cut it.

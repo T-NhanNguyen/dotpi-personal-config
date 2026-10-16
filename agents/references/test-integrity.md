@@ -36,6 +36,9 @@ Record these fields for every proposed test:
 - **asserts:** Specify the concrete check, such as an exact final state or no effects after failure.
 
 Record relevant starting-state assumptions and each dropped or merged candidate's reason.
+For harness-only changes, require the actual scoped diff, change intent, and affected existing coverage;
+reuse approved, unchanged assertion intents rather than requiring a new semantic test-design cycle.
+Changed assertion semantics or newly exposed risks still require adjudication.
 
 ## Coverage ledger
 
@@ -44,10 +47,14 @@ Never count uncovered items as passing; correct claims for properties the tests 
 Name mocked collaborators, disabled integrations, and quarantined tests; subtract these exclusions from claimed coverage.
 Do not claim integration coverage from an isolated dependency test.
 Update the ledger from what execution actually exercised; identify invalid tests and remaining gaps.
+Count logical representatives separately from planned, attempted, and completed executions/configurations.
+An omitted configuration (including Debug) remains uncovered unless equivalence is explicitly justified.
 
 ## Budgets
 
 Use supplied read, build, test, and execution-time budgets; default to at most 12 new tests.
+Require an explicit invocation budget upfront, allocating bring-up, planned execution, and any authorized
+post-repair verification. A repair grants neither extra invocations nor authorization to verify it.
 Choose the cheapest test that still asserts the integrity property.
 Name expensive integration, timing-sensitive, and end-to-end tests; account for setup cost and runtime.
 Batch file reads; do not re-read a file already read in the run.
@@ -61,11 +68,18 @@ Treat output bytes as a cost: prefer bounded digests and filtered artifact reads
 
 Design every test runner to emit one JSONL record per case on stdout, one record per line, plus a per-target summary. Never send verbose logs to stdout.
 
-- Per case: `{"case":"<name>","status":"pass"}`, or `"status":"fail"` with `"at":"<file>:<line>"` and `"assert":"<first assertion, one line, truncated>"`, or `"status":"invalid"` with `"reason":"<setup or infrastructure, one line>"`.
+- Per case: `{"case":"<name>","status":"pass"}`, or `"status":"fail"` with `"at":"<file>:<line>"` and `"assert":"<first assertion, one line, truncated>"`, or `"status":"invalid"` with `"reason":"<invalidity reason, one line>"`.
 - Per target: `{"summary":{"target":"<target>","kind":"<ctest|binary|python|...>","pass":N,"fail":N,"invalid":N,"report":"<path>","log":"<path>"}}`.
-- Cross-target: `{"rollup":{"pass":N,"fail":N,"targets":N}}`.
+- Cross-target: `{"rollup":{"pass":N,"fail":N,"invalid":N,"targets":N}}`.
 
-Keep a fixed key set and order; no optional keys; strip or truncate embedded newlines so one record stays one line; never pretty-print.
+Use a fixed key set and order per status/summary variant above; no optional keys within a variant.
+Keep each record on one line; never pretty-print. Truncate display text only when full essential evidence
+remains recoverable in artifacts; otherwise mark the affected evidence invalid, preserving genuine failures.
+
+The report must reconcile the planned roster with observed cases, configurations, and nested outcomes;
+account for missing, duplicate, or incomplete results. Summaries and rollups include invalid outcomes and
+separate run completeness from case status; missing/untrustworthy evidence blocks acceptance even when
+all observed cases pass. Do not overwrite an observed valid failure to represent incomplete execution.
 
 Write full verbose output to artifacts, never to stdout. Support `--human` to print the readable log for a person, and `--failures-only` to print non-pass records plus the summary for large suites; the complete roster stays in the report artifact.
 
@@ -77,18 +91,24 @@ Ingest the digest, not the log. Filter artifacts in the shell before reading: `j
 
 Use one runner entry point per target; select cases with `--case <name>` (repeatable) or `--all`. Never poll with sleep or tail, and never read status mid-run.
 
-Run one blocking invocation; honor the caller's budget, with no fixed default timeout. If the budget is exhausted or the run aborts, emit the partial digest of records completed so far plus artifact paths.
+Use blocking invocations within the explicit allocation; honor the caller's budget, with no fixed default
+timeout. If exhausted or aborted, emit the partial digest and artifact paths, retaining historical results.
 
-Isolate cases so one crash cannot suppress the rest, and record each case as it completes. Run once per request with no automatic reruns; handle flakiness per the execution-integrity rules.
+Isolate cases so one crash cannot suppress the rest, and record each case as it completes. No automatic
+reruns or flaky-product retries. Post-repair verification is a distinct, explicitly authorized invocation,
+not a flaky-product retry; disclose its scope and retain the original outcomes. If no authorized budget
+remains, report the corrected runner as unverified. Never silently retry or assume extra authorization.
 
 ## Execution integrity
 
-Require an unambiguous implementation target, explicit test list, and a workspace state that permits a valid run.
+Require an unambiguous implemented diff and target, explicit test list, and a workspace state that permits a valid run.
 Run a bring-up check first: verify the runner works, fixtures are reachable, and the baseline is sane.
 Start each test from a defined state: reset fixtures, assert preconditions, and clear leaked state.
 Run the smallest sufficient sequence in the specified order; stop on infrastructure failure.
-Report infrastructure failure as infrastructure, never as a product pass or fail; mark broken setup or fixtures invalid.
-Record pass evidence or the exact failing assertion for each test.
+A fail is an observed contract violation under valid preconditions; invalid means untrustworthy or incomplete
+evidence. Both block acceptance. Infrastructure failure alone is invalid, not a product pass or fail.
+Preserve valid failures if infrastructure breaks later; report run completeness separately.
+Record pass evidence, the exact failing assertion, or the invalidity reason for each test.
 Label flaky results with evidence; never silently retry into a pass or count flaky results as product coverage.
 Control timing, ordering, and external-service dependencies or declare the affected checks integrity-limited.
 Keep slow/static checks distinct from at-speed checks; distinguish cheap unit checks from expensive integration checks.

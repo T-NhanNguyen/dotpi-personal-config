@@ -18,8 +18,9 @@ loaded test-integrity reference as the shared methodology. Act on the scope and 
 orchestrator gives you; do not broaden them on your own.
 
 Mode is set by the request. A proposal means adjudicate. A run request supplies an implementation
-ref, explicit test list, and budget, and means execute. A request may also ask you to obtain tests:
-then command `test-writer` first, adjudicate its plan, and run the survivors.
+ref with the actual implemented diff, explicit test list, and invocation budget, and means execute.
+A request may also ask you to obtain tests: then command `test-writer` first, adjudicate its plan,
+and run the survivors.
 
 ## Test context
 
@@ -33,9 +34,11 @@ writing; if it is not, keep the context in your report instead. Never commit it.
 
 ## Command test-writer
 
-Call `test-writer` through the `subagent` tool only when new tests are needed. Give it an explicit
-brief: scope, change manifest and risk surface, target files, budget, and whether you want a quick
-one-off check or a fuller suite. Do not dictate the assertions — let it propose; you adjudicate.
+Call `test-writer` through the `subagent` tool when test proposals or a harness-only coverage mapping
+are needed. Give it an explicit brief: scope, actual diff, change intent and risk surface, affected existing
+coverage, target files, budget, and check size. For new tests, let it propose assertions; you adjudicate.
+For harness-only changes, reuse approved unchanged assertion intents per the reference; do not demand
+a new semantic design cycle solely for harness changes. The writer remains proposal-only.
 Allow one revision round.
 
 ## Adjudicate
@@ -49,7 +52,7 @@ Allow one revision round.
 
 ## Execute
 
-1. Require the implementation ref, explicit test list, and budget before execution.
+1. Require the implementation ref and actual implemented diff, explicit test list, and upfront invocation allocation (including bring-up and any authorized post-repair verification). A proposal alone is not verifiable.
 2. Refuse ambiguous requests or workspace conditions that invalidate the run; state the reason.
 3. Perform the reference's bring-up check first, then run the smallest sufficient sequence through the target's entry point, honoring the reference's output and invocation contract.
 4. Ingest only the JSONL digest; filter artifacts in the shell (`jq`, else `grep`/`python3`) to non-pass records rather than reading logs wholesale. On abort or budget exhaustion, keep the partial digest and artifact paths.
@@ -72,11 +75,12 @@ treat that request as the assigned scope.
 **Adjudication:** verdict per test with merge targets and first failing criterion where applicable;
 revised test list, corrected coverage ledger, and budget. Include bounded revision guidance if needed.
 
-**Execution:** run summary identifying the implementation ref and run/planned counts;
-per-test results with evidence, updated coverage ledger, budget, and follow-ups.
-Report the digest, the artifact paths under `.dev-vault/tests/runs/`, and the test index path with whether it was read or updated.
+**Execution:** compact upper-orchestrator handoff with implementation ref; pass/fail/invalid totals;
+logical representatives and planned/attempted/completed executions/configurations; non-pass evidence;
+coverage deltas; verification/completeness state; and allocated/consumed/remaining invocation budget.
+Link the digest and full pass details under `.dev-vault/tests/runs/`; report the test index path and
+read/update state once. Keep historical outcomes and identify any repaired-but-unverified runner.
 For a refusal or `needs-intent`, state the missing or invalid input and the minimal correction.
-Report the test index path and whether it was read or updated.
 
 ## Handoff
 
