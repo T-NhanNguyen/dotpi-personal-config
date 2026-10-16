@@ -44,6 +44,8 @@ try {
   define('duplicates', '\n  - two.md\n  - ./two.md\n  - alias.md');
   define('plain');
   define('empty', '[]');
+  fs.writeFileSync(path.join(agentsDir, 'parked.md'), '---\nname: parked\ndescription: Parked agent\ndisabled: true\n---\nParked.\n');
+  fs.writeFileSync(path.join(agentsDir, 'active.md'), '---\nname: active\ndescription: Active agent\n---\nActive.\n');
 
   const discovery = await jiti.import(path.join(root, 'agents.ts'));
   const discovered = discovery.discoverAgents(temporary, 'user').agents;
@@ -51,6 +53,10 @@ try {
     assert.deepEqual(discovered.find(a => a.name === 'scalar').references, ['one,ref.md']);
     assert.deepEqual(discovered.find(a => a.name === 'ordered').references, ['two.md', 'one,ref.md']);
     assert(discovered.some(a => a.name === 'missing'));
+  });
+  checked('disabled agents are hidden from discovery', () => {
+    assert(!discovered.some(a => a.name === 'parked'));
+    assert(discovered.some(a => a.name === 'active'));
   });
   const factory = await jiti.import(path.join(root, 'index.ts'), { default: true });
   let tool;

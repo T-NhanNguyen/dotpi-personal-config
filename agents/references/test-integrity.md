@@ -55,6 +55,31 @@ Batch edits and builds; do not rebuild per test unless the test demands it.
 Cut lowest-merit tests first when over budget; state what was cut and why.
 Report proposed, surviving, and allowed counts plus time/build consumption where relevant.
 Never silently exceed a budget or add cases mid-run to pad coverage.
+Treat output bytes as a cost: prefer bounded digests and filtered artifact reads over ingesting full logs.
+
+## Test output contract
+
+Design every test runner to emit one JSONL record per case on stdout, one record per line, plus a per-target summary. Never send verbose logs to stdout.
+
+- Per case: `{"case":"<name>","status":"pass"}`, or `"status":"fail"` with `"at":"<file>:<line>"` and `"assert":"<first assertion, one line, truncated>"`, or `"status":"invalid"` with `"reason":"<setup or infrastructure, one line>"`.
+- Per target: `{"summary":{"target":"<target>","kind":"<ctest|binary|python|...>","pass":N,"fail":N,"invalid":N,"report":"<path>","log":"<path>"}}`.
+- Cross-target: `{"rollup":{"pass":N,"fail":N,"targets":N}}`.
+
+Keep a fixed key set and order; no optional keys; strip or truncate embedded newlines so one record stays one line; never pretty-print.
+
+Write full verbose output to artifacts, never to stdout. Support `--human` to print the readable log for a person, and `--failures-only` to print non-pass records plus the summary for large suites; the complete roster stays in the report artifact.
+
+Store artifacts at `.dev-vault/tests/runs/<timestamp>-<target>/run.log` and `report.jsonl`. Retain the last 5 runs per target and prune older. Never commit them. Keep durable conclusions in `.dev-vault/tests/toc.md`.
+
+Ingest the digest, not the log. Filter artifacts in the shell before reading: `jq 'select(.status!="pass")' report.jsonl`, falling back to `grep` or `python3` when `jq` is absent.
+
+## Invocation rules
+
+Use one runner entry point per target; select cases with `--case <name>` (repeatable) or `--all`. Never poll with sleep or tail, and never read status mid-run.
+
+Run one blocking invocation; honor the caller's budget, with no fixed default timeout. If the budget is exhausted or the run aborts, emit the partial digest of records completed so far plus artifact paths.
+
+Isolate cases so one crash cannot suppress the rest, and record each case as it completes. Run once per request with no automatic reruns; handle flakiness per the execution-integrity rules.
 
 ## Execution integrity
 

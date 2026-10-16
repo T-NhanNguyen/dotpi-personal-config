@@ -52,7 +52,11 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string> & { references?: unknown }>(content);
+		const { frontmatter, body } = parseFrontmatter<Record<string, string> & { references?: unknown; disabled?: unknown }>(content);
+
+		if (frontmatter.disabled === true || frontmatter.disabled === "true") {
+			continue;
+		}
 
 		if (!frontmatter.name || !frontmatter.description) {
 			continue;

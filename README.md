@@ -178,6 +178,13 @@ via the `subagent` tool, supplying an implementation reference, an explicit test
 list, and a budget. If delegation is unavailable or the gate errors, the auditor
 runs the checks itself as a fallback and explicitly reports that fallback.
 
+The gate is the test lead: it keeps a project-local test index at
+`.dev-vault/tests/toc.md` for quick suite context, runs tests itself, and
+commands `test-writer` through the `subagent` tool only when tests must be
+created or revised, passing an explicit scope and budget. `test-writer` stays a
+leaf with no `subagent` tool, so the chain cannot recurse; it may also be called
+directly by the orchestrator for independent, pre-implementation test design.
+
 Each agent returns changed files, corrections, check results, and remaining
 issues or blockers. The code auditor also reports readiness within the audited
 scope, supported by verification evidence.

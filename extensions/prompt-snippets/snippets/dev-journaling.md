@@ -25,10 +25,11 @@ Every repo gets a private Obsidian vault that journals the development process. 
 ├── design/             # design decisions, architecture, trade-offs (one file per topic)
 ├── tips/               # gotchas, misconceptions, how-tos (one topic per file), and valuable inisght that is worth presenting
 ├── dev/                # session journal: YYYY-MM-DD-<topic>.md per entry
+├── tests/              # test index and run artifacts (see below)
 └── roadmap/            # plans, milestones, backlog (concrete, pick-up-able items)
 ```
 
-- **Markdown only** — every note in the vault is a Markdown (`.md`) file, including artifacts. No other file formats, ever.
+- **Markdown only** — every note in the vault is a Markdown (`.md`) file, including artifacts. No other file formats, ever — except `tests/runs/`, which holds raw run artifacts (`.log`, `.jsonl`).
 - Use `[[wikilinks]]` in `toc.md` so links resolve natively in Obsidian.
 - Folders get a one-line `README.md` stating what belongs there until real content exists.
 
@@ -50,6 +51,12 @@ Every repo gets a private Obsidian vault that journals the development process. 
 - Scratch space for anything useful only to the current session: raw dumps, half-formed notes, experiment output, working copies of drafts.
 - **Nothing important lives here.** Everything in `artifacts/` is reproducible or disposable — deleting the whole folder must never block progress.
 - It is not indexed in `toc.md` and never carries handoff state. If something in it becomes important, move it into `dev/`, `design/`, `tips/`, or `roadmap/` before the session ends.
+
+## tests/ — test memory
+
+- `tests/toc.md` is the test index: target roster and how to run each target, known flaky or invalid cases, coverage gaps, and the last verified revision with evidence. Read it before testing; update it after any run or adjudication.
+- `tests/runs/<timestamp>-<target>/` holds per-run `run.log` and `report.jsonl` (JSONL, one record per line). Retain the last 5 runs per target and prune older.
+- The runs folder is disposable; durable conclusions live in `tests/toc.md`. Only `tests/toc.md` is indexed in the main TOC; the run artifacts stay out of it.
 
 ## dev/ — session journal
 
