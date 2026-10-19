@@ -80,6 +80,8 @@ not optional merely because design preferences admit trade-offs.
 - Follow established project naming, formatting, module, and dependency
   conventions. Where none exist, prefer idiomatic conventions for the language;
   ask only when the choice materially affects the task.
+- Reduce memorization of operator precedence by utilizing explicitly isolates 
+  on truth conditions via parenthesis and curly brackets.
 - Use clear, proportionate names and straightforward control flow. Avoid clever
   constructs that obscure intent, but do not replace well-understood idioms
   merely because they differ from another language's style.

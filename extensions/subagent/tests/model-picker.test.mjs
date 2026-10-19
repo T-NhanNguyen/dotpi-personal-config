@@ -34,6 +34,8 @@ try {
     { provider: 'q', id: 'a', name: 'Plain chat', reasoning: false },
     { provider: 'p', id: 'restricted', name: 'Restricted reasoner', reasoning: true, thinkingLevelMap: { low: null, off: null } },
     { provider: 'local', id: 'coder:7b', name: 'Local coder', reasoning: true },
+    { provider: 'p', id: 'literal', name: 'Suffix collision base', reasoning: true },
+    { provider: 'p', id: 'literal:low', name: 'Literal colon model', reasoning: false },
   ];
   const agent = { name: 'explore', source: 'user', model: 'old/model' };
   checked('missing config', () => assert.equal(Object.keys(module.readPreferences()).length, 0));
@@ -125,10 +127,111 @@ try {
   checked('pi-default model clears independent thinking', () => assert.deepEqual(module.readPreferences().explore, { model: null }));
   await flow([options => options.find(value => value.startsWith('Use agent definition'))]);
   checked('reset removes both preferences', () => assert(!Object.hasOwn(module.readPreferences(), 'explore')));
-  await command.handler('', { hasUI: false, ui: { ...ctx.ui, select: () => assert.fail('No-UI must not select') } });
-  checked('no-UI guard', () => assert.equal(notices.at(-1)[1], 'warning'));
+  const headless = {
+    cwd: temporary, hasUI: false, modelRegistry: ctx.modelRegistry,
+    ui: {
+      notify: () => assert.fail('No-UI must write to stderr'),
+      select: () => assert.fail('No-UI must not select'),
+      input: () => assert.fail('No-UI must not request input'),
+    },
+  };
+  const runHeadless = async (args, context = headless) => {
+    const write = process.stderr.write;
+    let output = '';
+    process.stderr.write = (text) => { output += text; return true; };
+    try { await command.handler(args, context); }
+    finally { process.stderr.write = write; }
+    return output;
+  };
+  const beforeList = fs.readFileSync(config, 'utf8');
+  const listed = await runHeadless('list');
+  checked('headless list shows definition/default and saved sources without writing', () => {
+    assert.match(listed, /explore — old\/model \| thinking: child defaults \| source: definition\/default \(default\)/);
+    assert.match(listed, /worker — p\/a \| thinking: child defaults \| source: saved override/);
+    assert.equal(fs.readFileSync(config, 'utf8'), beforeList);
+  });
+  const aliasList = await runHeadless(' ls ');
+  checked('ls alias', () => assert.equal(aliasList, listed));
+  await flow([], [], 'list');
+  checked('UI list uses info output without dialogs', () => {
+    assert.equal(dialogs.length, 0);
+    assert.equal(notices.at(-1)[1], 'info');
+    assert.equal(notices.at(-1)[0], listed.trimEnd());
+  });
+  const saved = await runHeadless('  set   explore   p/a:low  ');
+  checked('headless set saves model and thinking atomically', () => {
+    assert.deepEqual(module.readPreferences().explore, { model: 'p/a', thinking: 'low' });
+    assert.equal(module.readPreferences().worker.model, 'p/a');
+    assert.match(saved, /explore: p\/a \| thinking: low/);
+    assert.match(saved, /future subagent runs; main session unchanged/);
+    assert.equal(JSON.parse(fs.readFileSync(config)).version, 2);
+  });
+  const overrideList = await runHeadless('list');
+  checked('list reports saved thinking', () => assert.match(overrideList, /explore — p\/a \| thinking: low \| source: saved override/));
+  for (const [requested, expected] of [
+    ['local/coder:7b', { model: 'local/coder:7b' }],
+    ['local/coder:7b:minimal', { model: 'local/coder:7b', thinking: 'minimal' }],
+    ['literal:low', { model: 'p/literal:low' }],
+    ['p/literal:low', { model: 'p/literal:low' }],
+    ['p/a', { model: 'p/a' }],
+  ]) {
+    await runHeadless(`set explore ${requested}`);
+    checked(`exact IDs and last-colon parsing: ${requested}`, () => assert.deepEqual(module.readPreferences().explore, expected));
+  }
+  for (const args of ['set explore p/restricted:low', 'set explore q/a:low', 'set explore missing/model', 'set nonexistent p/a', 'set explore', 'set explore p/a extra']) {
+    const before = fs.readFileSync(config, 'utf8');
+    const output = await runHeadless(args);
+    checked(`invalid set does not mutate: ${args}`, () => {
+      assert.equal(fs.readFileSync(config, 'utf8'), before);
+      assert.match(output, /Unknown|Usage:/);
+    });
+  }
+  for (const args of ['', 'explore']) {
+    const output = await runHeadless(args);
+    checked(`headless usage plus list: ${JSON.stringify(args)}`, () => {
+      assert.match(output, /Usage:/);
+      assert.match(output, /explore —/);
+    });
+  }
+  for (const args of ['nonexistent', 'list extra']) {
+    const output = await runHeadless(args);
+    checked(`unknown command prints usage: ${args}`, () => assert.match(output, /^Usage:/));
+  }
+  for (const registry of [undefined, { refresh: async () => { throw new Error('unavailable'); } }]) {
+    const output = await runHeadless('set explore private/model:low', { ...headless, modelRegistry: registry });
+    checked('unavailable headless registry preserves literal unvalidated model', () => {
+      assert.deepEqual(module.readPreferences().explore, { model: 'private/model:low' });
+      assert.match(output, /not registry-validated/);
+    });
+  }
+  await module.savePreference('explore', null);
+  const defaultList = await runHeadless('list');
+  checked('saved pi default is an override, not a definition default', () => {
+    assert.match(defaultList, /explore — Pi default \| thinking: child defaults \| source: saved override/);
+    assert(!defaultList.split('\n').find(line => line.startsWith('explore —')).includes('(default)'));
+  });
+  await flow([], [], 'set explore p/a:low');
+  checked('UI set saves directly without opening dialogs', () => {
+    assert.equal(dialogs.length, 0);
+    assert.deepEqual(module.readPreferences().explore, { model: 'p/a', thinking: 'low' });
+    assert.equal(notices.at(-1)[1], 'info');
+  });
+  const beforeEmptyRegistry = fs.readFileSync(config, 'utf8');
+  const emptyRegistryOutput = await runHeadless('set explore p/a', { ...headless, modelRegistry: { refresh: async () => {}, getAvailable: () => [] } });
+  checked('available empty registry rejects instead of skipping validation', () => {
+    assert.match(emptyRegistryOutput, /Unknown available model/);
+    assert.equal(fs.readFileSync(config, 'utf8'), beforeEmptyRegistry);
+  });
+  const malformed = await runHeadless('set explore :', { ...headless, modelRegistry: undefined });
+  checked('unvalidated model must still be well formed', () => {
+    assert.match(malformed, /Invalid model/);
+    assert.equal(fs.readFileSync(config, 'utf8'), beforeEmptyRegistry);
+  });
   await command.handler('nonexistent', ctx);
-  checked('unknown user agent error', () => assert.equal(notices.at(-1)[1], 'error'));
+  checked('unknown user agent prints usage', () => {
+    assert.equal(notices.at(-1)[1], 'info');
+    assert.match(notices.at(-1)[0], /Usage:/);
+  });
   fs.writeFileSync(config, '{bad json');
   await command.handler('explore', ctx);
   checked('malformed config is not overwritten', () => { assert.equal(fs.readFileSync(config, 'utf8'), '{bad json'); assert.equal(notices.at(-1)[1], 'error'); });

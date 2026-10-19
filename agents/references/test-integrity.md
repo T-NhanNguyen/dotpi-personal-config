@@ -6,9 +6,12 @@ Require every test to satisfy all five checks:
 1. **Bound:** Name a specific requirement, risk, or contract; reject orphan tests.
 2. **Classed:** Designate a representative of a named equivalence class, not a Cartesian-product cell.
 3. **Integrity-asserting:** Assert an exact outcome, state transition, side-effect absence, or input preservation.
-   Reject "it ran without crashing" as an integrity assertion.
+   Reject "it ran without crashing" as an integrity assertion. Assert the contract's semantics, not surface
+   shape: check object type and section where they matter, decode one record per line, and compare exact
+   tuples rather than names or lookalike fields.
 4. **Non-redundant:** Do not re-prove the existing suite or duplicate another test's path.
    Require costly tests to explain why a cheaper test cannot assert the same property.
+   A structural assertion nested inside an existing test is part of that test's class and adds no new test or coverage.
 5. **Realistic:** Map every injected fault, bad input, or failure mode to a plausible real failure.
 
 Check intent presence, budget counts, and suite duplication before qualitative judgment.
@@ -113,3 +116,13 @@ Label flaky results with evidence; never silently retry into a pass or count fla
 Control timing, ordering, and external-service dependencies or declare the affected checks integrity-limited.
 Keep slow/static checks distinct from at-speed checks; distinguish cheap unit checks from expensive integration checks.
 Attribute results and evidence to the correct target when tests span components, services, or environments.
+
+## Oracle and evidence integrity
+
+A failing result is a claim from a tool, not a verdict on the product. Validate the evidence-producing layer before blaming production.
+
+- **Oracle validation:** For any check that parses output, disassembly, symbols, logs, or measurement files, prove the parser on a tiny captured-format sample and assert the exact expected tuples before trusting the real check. A parser self-check supports the product test; it is not itself one.
+- **Triage order:** On an unexpected failure, confirm the oracle and parser, then fixture storage and environment, then the test intent and expectations, then production. When the oracle is wrong, fix the oracle, not production or the expected values.
+- **Fixture and environment limits:** Treat aggregate storage as part of the test contract. Individually scoped fixtures can still aggregate into one instrumented frame; sanitizer instrumentation, stack/heap limits, and launch hooks can produce failures unrelated to the product. Declare these assumptions, and do not relabel an environment failure as a product bug or a proven hard limit.
+- **Evidence preservation:** Keep the original raw failure and its classification. Mark untrustworthy results `invalid` with the reason instead of deleting or rewriting them; never convert a historical failure into a pass because the oracle changed. After a repair, require a fresh run on the affected target; unchanged passing results elsewhere do not substitute.
+- **Remove superseded workarounds:** Delete obsolete launch hooks and harness workarounds rather than retaining unverified ones that can mask failures.

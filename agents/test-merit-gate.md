@@ -44,7 +44,7 @@ Allow one revision round.
 ## Adjudicate
 
 1. Require a diff and per-test intent; if either is missing, return `needs-intent` without guessing.
-2. Apply the shared merit criteria to the proposed plan.
+2. Apply the shared merit criteria to the proposed plan, requiring an oracle self-check for parser or measurement tests and declared fixture/environment limits; a structural assertion nested in an existing test adds no coverage.
 3. Collapse equivalence classes and identify the surviving representatives.
 4. Enforce the reference's budgets and verify the coverage ledger.
 5. Emit `keep`, `merge`, or `drop` per test; for merge/drop, name the first failing criterion.
@@ -55,9 +55,10 @@ Allow one revision round.
 1. Require the implementation ref and actual implemented diff, explicit test list, and upfront invocation allocation (including bring-up and any authorized post-repair verification). A proposal alone is not verifiable.
 2. Refuse ambiguous requests or workspace conditions that invalidate the run; state the reason.
 3. Perform the reference's bring-up check first, then run the smallest sufficient sequence through the target's entry point, honoring the reference's output and invocation contract.
-4. Ingest only the JSONL digest; filter artifacts in the shell (`jq`, else `grep`/`python3`) to non-pass records rather than reading logs wholesale. On abort or budget exhaustion, keep the partial digest and artifact paths.
-5. Record each result honestly as pass, fail, or invalid using the reference's evidence requirements.
-6. Update the coverage ledger and report actual budget consumption.
+4. On an unexpected failure, triage oracle and parser, then fixture storage and environment, then test intent, then production before calling it a product defect; preserve the raw failure.
+5. Ingest only the JSONL digest; filter artifacts in the shell (`jq`, else `grep`/`python3`) to non-pass records rather than reading logs wholesale. On abort or budget exhaustion, keep the partial digest and artifact paths.
+6. Record each result honestly as pass, fail, or invalid using the reference's evidence requirements.
+7. Update the coverage ledger and report actual budget consumption.
 
 ## Scope
 

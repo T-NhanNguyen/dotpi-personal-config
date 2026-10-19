@@ -4,7 +4,7 @@
  * Each snippet is a markdown file with frontmatter (name, description,
  * placement, order) stored in the `snippets/` directory next to this file.
  *
- * - Press alt+s or run /snippets to open the toggle menu (space: toggle,
+ * - Press alt+s or run /snippet (alias: /snippets) to open the toggle menu (space: toggle,
  *   tab: preview, enter: apply, esc: cancel). The menu is a bordered,
  *   scrollable view.
  * - Active snippets appear as a widget above the editor, with prepend and
@@ -107,9 +107,25 @@ export default function (pi: ExtensionAPI) {
 		ctx.ui.setWidget(WIDGET_ID, lines);
 	}
 
+	function output(ctx: ExtensionContext, text: string) {
+		if (ctx.hasUI) ctx.ui.notify(text, "info");
+		else process.stderr.write(text + "\n");
+	}
+
+	const usage = "Usage: /snippet [list | <code> ...] (alias: /snippets). Codes: p<order> = prepend, a<order> = append; e.g. /snippet p70 a30. Enables snippets for the next prompt.";
+	const snippetCode = (snippet: Snippet) => `${snippet.placement === "prepend" ? "p" : "a"}${snippet.order}`;
+
+	function printList(ctx: ExtensionContext) {
+		output(ctx, snippets.length === 0
+			? `No snippets found in ${snippetsDir}`
+			: snippets.map((s) => `${snippetCode(s)} ${s.name} — ${s.description} [${enabled.has(s.id) ? "enabled" : "disabled"}]`).join("\n"));
+	}
+
 	async function openMenu(ctx: ExtensionContext) {
-		if (ctx.mode !== "tui") {
-			ctx.ui.notify("Snippet menu requires interactive mode", "warning");
+		if (!ctx.hasUI || ctx.mode !== "tui") {
+			snippets = loadSnippets();
+			output(ctx, usage);
+			printList(ctx);
 			return;
 		}
 
@@ -316,10 +332,52 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("snippets", {
-		description: "Open the prompt snippet toggle menu",
-		handler: async (_args, ctx) => {
+	async function handleCommand(args: string, ctx: ExtensionContext) {
+		const argument = args.trim();
+		if (!argument) {
 			await openMenu(ctx);
-		},
-	});
+			return;
+		}
+
+		snippets = loadSnippets();
+		if (argument === "list" || argument === "ls" ) {
+			printList(ctx);
+			return;
+		}
+
+		const codes = argument.split(/\s+/);
+		if (codes.some((code) => !/^([pa])(\d+)$/i.test(code))) {
+			output(ctx, usage);
+			return;
+		}
+
+		const selected = new Set<string>();
+		const errors: string[] = [];
+		for (const code of codes) {
+			const placement = code[0].toLowerCase() === "p" ? "prepend" : "append";
+			const order = Number(code.slice(1));
+			const matches = snippets.filter((s) => s.placement === placement && s.order === order);
+			if (matches.length === 0) errors.push(`Unknown snippet code: ${code}`);
+			else if (matches.length > 1) errors.push(`Ambiguous snippet code: ${code} (${matches.map((s) => s.name).join(", ")})`);
+			else selected.add(matches[0].id);
+		}
+
+		// Resolve every code before changing selection; invalid batches leave it untouched.
+		if (errors.length > 0) {
+			output(ctx, errors.join("\n"));
+			printList(ctx);
+			return;
+		}
+
+		for (const id of selected) enabled.add(id);
+		updateWidget(ctx);
+		output(ctx, `Enabled for the next prompt: ${snippets.filter((s) => selected.has(s.id)).map((s) => `${snippetCode(s)} ${s.name}`).join(", ")}`);
+	}
+
+	for (const command of ["snippet", "snippets"]) {
+		pi.registerCommand(command, {
+			description: "List or enable prompt snippets: /snippet [list | p<order> a<order> ...]",
+			handler: handleCommand,
+		});
+	}
 }

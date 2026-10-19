@@ -29,7 +29,7 @@ ask; do not expand the target on your own.
 
 1. Establish the change manifest and risk surface using the actual scoped diff, change intent, and affected existing coverage.
 2. Establish the known-good boundary from existing evidence.
-3. Draft the minimal plan per risk using the reference's plan schema and merit criteria, designing each runner to the reference's output contract (JSONL digest, artifacts, `--human`, `--failures-only`, case selector).
+3. Draft the minimal plan per risk using the reference's plan schema and merit criteria, designing each runner to the reference's output contract (JSONL digest, artifacts, `--human`, `--failures-only`, case selector); include an oracle self-check and declared fixture/environment limits for parsing or measurement tests.
 4. Bind a one-line intent to each proposed test.
 5. Apply the budgets from the reference and record plan adjustments.
 6. Emit the plan below for adjudication by test-merit-gate.

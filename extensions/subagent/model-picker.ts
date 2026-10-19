@@ -98,20 +98,82 @@ function describeAgent(agent: AgentConfig, preferences: Preferences): string {
 
 export function registerModelPicker(pi: ExtensionAPI): void {
 	pi.registerCommand("subagent-model", {
-		description: "Search models and set independent thinking for a user subagent (optional: agent name)",
+		description: "Set user subagent models/thinking: [agent], list, or set <agent> <model>[:thinking]",
 		handler: async (args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("/subagent-model requires a dialog-capable TUI or RPC client.", "warning");
-				return;
-			}
+			const output = (text: string) => {
+				if (ctx.hasUI) ctx.ui.notify(text, "info");
+				else process.stderr.write(text + "\n");
+			};
+			const usage = "Usage: /subagent-model [agent] | list (ls) | set <agent> <model>[:thinking]. Overrides apply only to future user subagent runs; main session unchanged.";
+			const words = args.trim().split(/\s+/).filter(Boolean);
 			try {
 				const agents = discoverAgents(ctx.cwd, "user").agents.sort((a, b) => a.name.localeCompare(b.name));
+				const preferences = readPreferences();
+				const list = () => output(agents.length ? agents.map((agent) => {
+					const saved = own(preferences, agent.name);
+					const preference = saved ? preferences[agent.name] : undefined;
+					const model = preference ? preference.model ?? "Pi default" : agent.model ?? "Pi default";
+					const thinking = preference ? preference.thinking ?? "child defaults" : agent.thinking ?? "child defaults";
+					return `${agent.name} — ${model} | thinking: ${thinking} | source: ${saved ? "saved override" : "definition/default (default)"}`;
+				}).join("\n") : "No user subagents found in the agents directory.");
+				if ((words[0] === "list" || words[0] === "ls") && words.length === 1) {
+					list();
+					return;
+				}
+				if (words[0] === "set") {
+					if (words.length !== 3) { output(usage); return; }
+					const [, name, requested] = words;
+					if (!agents.some((agent) => agent.name === name)) {
+						output(`Unknown user subagent: ${name}\n${usage}`);
+						return;
+					}
+					let models: Model<Api>[] | undefined;
+					try {
+						if (ctx.modelRegistry) {
+							await ctx.modelRegistry.refresh();
+							models = ctx.modelRegistry.getAvailable();
+						}
+					} catch (error) {
+						if (ctx.hasUI) throw error;
+						// Headless clients may have no usable registry. Preserve the literal model ID.
+					}
+					let preference: Preference = { model: requested };
+					if (!/^[^\s\x00-\x1f\x7f]+$/.test(requested) || requested.startsWith(":") || requested.endsWith(":")) {
+						throw new Error(`Invalid model: ${requested}`);
+					}
+					if (models !== undefined) {
+						const find = (id: string) => models.find((model) => modelKey(model) === id) ?? models.find((model) => model.id === id);
+						// A literal ID (including any colon) always wins over a thinking suffix.
+						const exact = find(requested);
+						if (exact) preference = { model: modelKey(exact) };
+						else {
+							const colon = requested.lastIndexOf(":");
+							const model = colon > 0 ? find(requested.slice(0, colon)) : undefined;
+							const thinking = requested.slice(colon + 1);
+							if (!model || !getSupportedThinkingLevels(model).some((level) => level === thinking)) {
+								throw new Error(`Unknown available model or unsupported thinking level: ${requested}`);
+							}
+							preference = { model: modelKey(model), thinking };
+						}
+					}
+					await savePreference(name, preference);
+					output(`${name}: ${preference.model} | thinking: ${preference.thinking ?? "child defaults"}.${models === undefined ? " Model was not registry-validated; any colon suffix was preserved as part of the model ID." : ""} Applies to future subagent runs; main session unchanged.`);
+					return;
+				}
+				let name = args.trim();
+				if (name && !agents.some((agent) => agent.name === name)) {
+					output(usage);
+					return;
+				}
+				if (!ctx.hasUI) {
+					output(usage);
+					list();
+					return;
+				}
 				if (!agents.length) {
 					ctx.ui.notify("No user subagents found in the agents directory.", "warning");
 					return;
 				}
-				const preferences = readPreferences();
-				let name = args.trim();
 				if (!name) {
 					const labels = agents.map((agent) => describeAgent(agent, preferences));
 					const selection = await ctx.ui.select("Subagent model / thinking: choose agent", labels);
@@ -165,7 +227,9 @@ export function registerModelPicker(pi: ExtensionAPI): void {
 				const summary = preference ? `${preference.model ?? "Pi default"} | thinking: ${preference.thinking ?? "child defaults"}` : "agent definition | thinking: child defaults";
 				ctx.ui.notify(`${name}: ${summary}. Applies to future subagent runs; main session unchanged.`, "info");
 			} catch (error) {
-				ctx.ui.notify(`Subagent model picker: ${error instanceof Error ? error.message : String(error)}`, "error");
+				const message = `Subagent model picker: ${error instanceof Error ? error.message : String(error)}`;
+				if (ctx.hasUI) ctx.ui.notify(message, "error");
+				else output(message);
 			}
 		},
 	});
