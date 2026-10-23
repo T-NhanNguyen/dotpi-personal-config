@@ -9,11 +9,16 @@ import { fileURLToPath } from 'node:url';
 const host = process.env.PI_TEST_HOST || path.join(execSync('npm root -g', { encoding: 'utf8' }).trim(), '@earendil-works/pi-coding-agent');
 const require = createRequire(path.join(host, 'package.json'));
 const { createJiti } = require('jiti');
+const dependency = (name, file) => {
+  const found = require.resolve.paths(name).map(dir => path.join(dir, name, file)).find(file => fs.existsSync(file));
+  if (!found) throw new Error(`Cannot find test dependency ${name}/${file}`);
+  return found;
+};
 const alias = {
   '@earendil-works/pi-coding-agent': path.join(host, 'dist/index.js'),
-  '@earendil-works/pi-ai': path.join(host, 'node_modules/@earendil-works/pi-ai/dist/compat.js'),
-  '@earendil-works/pi-agent-core': path.join(host, 'node_modules/@earendil-works/pi-agent-core/dist/index.js'),
-  '@earendil-works/pi-tui': path.join(host, 'node_modules/@earendil-works/pi-tui/dist/index.js'),
+  '@earendil-works/pi-ai': dependency('@earendil-works/pi-ai', 'dist/compat.js'),
+  '@earendil-works/pi-agent-core': dependency('@earendil-works/pi-agent-core', 'dist/index.js'),
+  '@earendil-works/pi-tui': dependency('@earendil-works/pi-tui', 'dist/index.js'),
   typebox: require.resolve('typebox'),
 };
 const jiti = createJiti(import.meta.url, { alias, moduleCache: false });
@@ -70,7 +75,7 @@ try {
   checked('concurrent preference writes preserve both', () => { assert.equal(module.readPreferences().one.model, 'p/a'); assert.equal(module.readPreferences().two.model, 'q/a'); });
 
   let command;
-  module.registerModelPicker({ registerCommand(name, definition) { assert.equal(name, 'subagent-model'); command = definition; } });
+  module.registerModelPicker({ registerCommand(name, definition) { if (name === 'subagent-model') command = definition; } });
   let replies = [], inputs = [], dialogs = [], notices = [], refreshes = 0;
   const ctx = {
     cwd: temporary, hasUI: true,

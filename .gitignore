@@ -3,3 +3,4 @@ node_modules/
 *.log
 .dev-vault/
 .pi/subagent-models.json
+.pi

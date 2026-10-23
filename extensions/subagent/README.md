@@ -2,6 +2,70 @@
 
 Run `/reload` after installing or changing this extension.
 
+## Session profiles
+
+Use `/subagent-profile muse` to switch all installed user agents in this session.
+Each agent keeps its current explicit thinking level. A saved thinking preference
+wins over a level in the agent's `model:` suffix. Agents using child thinking
+defaults keep that behavior; their actual child-selected level is not known here.
+The command does not copy the parent session's thinking level.
+
+Built-in profiles:
+
+| Profile | Model |
+| --- | --- |
+| `muse` | Muse Spark 1.3 Contributor |
+| `gpt` | GPT 6.1 Sol |
+| `deepseek` | DeepSeek V4.1 Flash |
+
+- `/subagent-profile` lists profiles and the current selection.
+- `/subagent-profile clear` returns this session to configured defaults.
+- `/subagent-model list` shows the effective model, thinking, and source.
+
+Activation resolves the actual provider-qualified model ID from the available
+registry. It validates every explicit thinking level before writing anything.
+Missing or ambiguous models and unsupported thinking levels reject the whole
+change. Thinking is never silently raised, lowered, or removed. Project agents,
+the parent model, and already-running children are unchanged.
+
+The resolved assignments are a snapshot in a hidden `subagent-profile` custom
+session entry, not in global preferences and not in model context. Parallel
+sessions in the same directory remain independent. Resume, continue, reload,
+and compaction retain the selection. Branch navigation uses the marker on that
+branch; forks inherit the selection at the fork point. Clear appends a reset
+entry rather than deleting history. Sessions started without disk persistence
+keep the selection only while that process lives. Do not open the *same session
+file* concurrently in multiple processes; separate sessions are the isolation
+boundary.
+
+The inspector and each spawn read the active branch directly, so no lifecycle
+cache can carry a choice into another session. A model removed after activation
+blocks affected runs with explicit thinking rather than silently choosing a
+fallback. Reapply a supported profile or clear it. Newly installed agents not
+in a snapshot use their normal defaults until the profile is reapplied.
+
+Optional global configuration in `subagent-models.json` can define additional
+model-only profiles and a default for sessions without a selection:
+
+```json
+{
+  "version": 2,
+  "agents": {},
+  "profiles": { "backup": "provider/model-id" },
+  "defaultProfile": "backup"
+}
+```
+
+The default remains shared configuration. Use session activation when you want
+a stable snapshot that other sessions cannot change. Clear returns to that
+default if present, otherwise saved per-agent preferences and agent definitions.
+Existing `/subagent-model set` and picker saves still update global preferences;
+while a session profile is active, the command warns that it takes precedence.
+Profile activation itself never writes the global file.
+
+Commands use notifications in TUI and dialog-capable RPC clients such as
+PiChamber, and stderr in headless modes. No custom terminal UI is required.
+
 ## Usage
 
 - `/subagent-model`: choose a user agent; labels show its current model and thinking preference.
@@ -40,6 +104,7 @@ A fixed model must also be available in the child pi process. Providers register
 
 ```sh
 node ~/.pi/agent/extensions/subagent/tests/model-picker.test.mjs
+node ~/.pi/agent/extensions/subagent/tests/session-profiles.test.mjs
 ```
 
 The test harness discovers a global npm pi installation. For another installation layout, set `PI_TEST_HOST` to the installed `@earendil-works/pi-coding-agent` package directory. Production extension code has no machine-specific paths.

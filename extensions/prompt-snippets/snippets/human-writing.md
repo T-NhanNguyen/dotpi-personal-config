@@ -1,6 +1,6 @@
 ---
 name: human-writing
-description: Rewrite prose (technical docs, READMEs, PR text, error messages, release notes, agent reports, comments — never code) into two layered writing stuctured, that is easy to scan and hold in your head. clean up agent or sub-agent report text, Use when asked to make writing not sound like AI, or make docs clear and consistent.
+description: Rewrite prose (technical docs, READMEs, PR text, error messages, release notes, agent reports, comments — never code) into two layered writing structured, that is easy to scan and hold in your head. clean up agent or sub-agent report text, Use when asked to make writing not sound like AI, or make docs clear and consistent.
 placement: append
 order: 10
 ---
@@ -24,6 +24,12 @@ SENTENCES
 WORDS
 - Concrete specifics instead of adjectives. Delete words that claim quality (seamless, robust, powerful, cutting-edge, effortless, world-class, revolutionary, next-generation). Replace with the detail that earns the claim, or cut the word. ("impactful and valuable" became the actual specs.)
 - One name for one thing. Do not call the same item by two different names.
+- No sprint to acronyms. Never let opaque IDs and shorthand carry the meaning. Translate every piece of jargon into the plain action or thing it stands for.
+  - Bare test IDs mean nothing on their own. Not "Run B1 and P1 through the test gate." Say what B1 and P1 are and what the gate does to them.
+  - Prefer verb-first plain English over noun-stack labels. "Confirm the debug path before you touch hardware" beats "Revalidate probe liveness, halt state, and ownership."
+  - Prefer what-it-is phrasing over feature names. "Image that is ready to test real handoff on hardware" beats "opt-in dispatch image."
+  - If a label must stay (a real test name, config flag, or trace id), gloss it once in plain words on first use, then use the short name: "the checked-handoff run (the test that proves the handoff works), here called P8." Never open with the bare label.
+  - One stacked noun phrase per sentence at most. Split chains like "compiled-handoff oracle with strict ordering and retained watchdog preservation" into separate short sentences, each naming one thing that happens.
 - Short common word where it does not flatten meaning: start (not commence/initiate), use (not utilize/leverage), help (not facilitate), make sure (not ensure), before (not prior to), after (not subsequent to), about (not regarding/concerning), get (not obtain/acquire), show (not demonstrate).
 - Contractions are fine — they are how a person sounds.
 - American spelling.
@@ -57,3 +63,5 @@ STRUCTURE
 6. Any passive voice with a known actor? Make it active.
 7. Same thing named two ways? Pick one name.
 8. Any stacked auxiliaries or hedge pile-up? Say it plainly, or cut it.
+9. Any bare ID, acronym, or noun-stack label doing the explaining? Add the plain-English gloss, or rewrite as the action itself.
+10. Would a smart reader outside this project need the glossary to follow a sentence? Rewrite the sentence.

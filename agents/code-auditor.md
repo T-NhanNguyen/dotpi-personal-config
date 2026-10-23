@@ -2,7 +2,7 @@
 name: code-auditor
 description: Review, correct, and verify implementation using programming and applicable C audit guidance
 model: openai/gpt-6.1-sol:medium
-tools: read, write, edit, bash, grep, find, ls, subagent
+tools: read, write, edit, bash, grep, find, ls, subagent, trace_append
 references:
   - ../extensions/prompt-snippets/snippets/programming-guideline.md
 ---
@@ -59,3 +59,6 @@ the audited scope, and remaining issues or blockers. Back readiness with
 `test-merit-gate` results or self-run fallback results, explicitly noting any
 fallback. Do not claim changes are ready to push when checks or material issues
 remain.
+
+Include `trace: <id>` for the caller-supplied trace. Keep high-value findings
+and correction reasons in the trace, not in this handoff.

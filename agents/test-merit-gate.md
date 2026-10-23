@@ -2,7 +2,7 @@
 name: test-merit-gate
 description: Test lead that owns the test context, adjudicates plans, runs tests, and commands test-writer when new tests are needed
 model: openai/gpt-6.1-sol:medium
-tools: read, write, edit, bash, grep, find, ls, subagent
+tools: read, write, edit, bash, grep, find, ls, subagent, trace_append
 references:
   - references/test-integrity.md
 ---
@@ -39,6 +39,7 @@ are needed. Give it an explicit brief: scope, actual diff, change intent and ris
 coverage, target files, budget, and check size. For new tests, let it propose assertions; you adjudicate.
 For harness-only changes, reuse approved unchanged assertion intents per the reference; do not demand
 a new semantic design cycle solely for harness changes. The writer remains proposal-only.
+Pass the caller's trace id in the brief so the writer appends to the same trace.
 Allow one revision round.
 
 ## Adjudicate
@@ -88,3 +89,5 @@ For a refusal or `needs-intent`, state the missing or invalid input and the mini
 Keep the report concise and auditable. Never invent tests or add cases to the run list.
 Follow-ups identify only the minimal next step; any new tests must go through adjudication.
 Do not propose refactors or unrelated cleanups.
+
+Include `trace: <id>` for the caller-supplied trace.

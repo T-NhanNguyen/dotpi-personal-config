@@ -30,7 +30,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
-import { agentModelArgs, applyModelPreferences, registerModelPicker } from "./model-picker.ts";
+import { agentModelArgs, applyModelPreferences, effectivePreferences, registerModelPicker } from "./model-picker.ts";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -588,7 +588,8 @@ export default function (pi: ExtensionAPI) {
 				...(params.chain ?? []).map((item) => item.agent),
 			]);
 			await ctx.modelRegistry.refresh();
-			const agents = applyModelPreferences(discovery.agents, undefined, ctx.modelRegistry.getAll(), requestedNames);
+			const preferences = effectivePreferences(ctx, discovery.agents).preferences;
+			const agents = applyModelPreferences(discovery.agents, preferences, ctx.modelRegistry.getAll(), requestedNames);
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
 			const hasChain = (params.chain?.length ?? 0) > 0;

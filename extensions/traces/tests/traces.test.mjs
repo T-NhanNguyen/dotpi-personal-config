@@ -26,11 +26,16 @@ try {
   const factory = await jiti.import(path.join(root, 'index.ts'), { default: true });
   let append;
   let query;
+  let mermaid;
   factory({
-    registerTool: (tool) => { if (tool.name === 'trace_append') append = tool; else if (tool.name === 'trace_query') query = tool; },
+    registerTool: (tool) => {
+      if (tool.name === 'trace_append') append = tool;
+      else if (tool.name === 'trace_query') query = tool;
+      else if (tool.name === 'trace_mermaid') mermaid = tool;
+    },
     registerCommand: () => {},
   });
-  assert(append && query, 'both trace tools registered');
+  assert(append && query && mermaid, 'all trace tools registered');
 
   const ctx = { cwd: temporary };
   const call = (tool, params) => tool.execute('test', params, undefined, undefined, ctx);
@@ -46,6 +51,19 @@ try {
 
   await call(append, { ...base, kind: 'decision', title: 'A decision' });
   await call(append, { ...base, kind: 'deadend', title: 'A dead end' });
+  await call(append, { ...base, kind: 'evidence', title: 'Evidence record' });
+  await call(append, { ...base, kind: 'finding', title: 'Depends on evidence', supports: ['e1'] });
+  await call(append, { ...base, kind: 'decision', title: 'Choose Timer2', supports: ['e1'] });
+  await call(append, { ...base, kind: 'deadend', title: 'Reject Timer0', supports: ['d2'] });
+  await call(append, {
+    ...base,
+    kind: 'path',
+    title: 'Narrow the manual',
+    steps: [
+      { action: 'read capabilities', ref: 'p.334' },
+      { action: 'follow init recipe', ref: 'pp.342-343' },
+    ],
+  });
 
   const outline = text(await call(query, { action: 'outline', trace: 'demo' }));
   checked('outline excludes deadends by default', () => {
@@ -73,6 +91,32 @@ try {
 
   const list = text(await call(query, { action: 'list' }));
   checked('list shows the trace root', () => assert.match(list, /demo/));
+
+  const prov = text(await call(mermaid, { trace: 'demo', diagram: 'provenance' }));
+  checked('provenance diagram renders dependencies', () => {
+    assert.match(prov, /flowchart LR/);
+    assert.match(prov, /e1 --> f2/);
+    assert.match(prov, /e1 --> d2/);
+    assert.doesNotMatch(prov, /Reject Timer0/);
+  });
+  const provAll = text(await call(mermaid, { trace: 'demo', diagram: 'provenance', includeDeadends: true }));
+  checked('provenance includes deadends on request', () => assert.match(provAll, /Reject Timer0/));
+
+  const pathDiagram = text(await call(mermaid, { trace: 'demo', diagram: 'path' }));
+  checked('path diagram renders steps', () => {
+    assert.match(pathDiagram, /read capabilities/);
+    assert.match(pathDiagram, /follow init recipe/);
+  });
+
+  const decisionDiagram = text(await call(mermaid, { trace: 'demo', diagram: 'decision' }));
+  checked('decision diagram links a rejected deadend', () => assert.match(decisionDiagram, /d2 -\.-> x2/));
+
+  await call(mermaid, { trace: 'demo', diagram: 'provenance', write: true });
+  checked('write saves the mmd file', () => {
+    const file = path.join(temporary, '.dev-vault/traces/demo/diagram-provenance.mmd');
+    assert.ok(fs.existsSync(file));
+    assert.match(fs.readFileSync(file, 'utf8'), /flowchart LR/);
+  });
 
   await assert.rejects(() => call(append, { ...base, refs: [] }), /At least one ref/);
   checked('rejects a record with no refs', () => {});

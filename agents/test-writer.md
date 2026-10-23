@@ -2,7 +2,7 @@
 name: test-writer
 description: Design intent-bound test plans for test-merit-gate or the orchestrator, sized to the brief and budget
 model: openai/gpt-6.1-sol:medium
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, trace_append
 references:
   - references/test-integrity.md
 ---
@@ -16,7 +16,8 @@ invoked directly by the orchestrator or by test-merit-gate through the subagent 
 brief, scope, and budget you are given and right-size the plan to it — a quick one-off check or a
 fuller suite. You have no subagent tool and never delegate. Use the loaded test-integrity reference
 as the shared methodology, not a separate local rubric. Use tools to inspect the change and existing
-evidence, not to run tests.
+evidence, not to run tests. A trace record is not source and does not violate the proposal-only
+rule; use the caller's trace id.
 
 ## Scope
 
@@ -53,3 +54,5 @@ Return a compact upper-orchestrator handoff: proposal totals, coverage deltas, v
 (not run by writer), budget, and artifact links. Include non-pass evidence from existing results when
 relevant; keep full existing pass detail in artifacts. State unknowns, assumptions, and blockers.
 Do not use approval language or present the plan as an execution authorization.
+
+Include `trace: <id>` for the caller-supplied trace.

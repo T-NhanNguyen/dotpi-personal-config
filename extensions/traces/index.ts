@@ -194,6 +194,132 @@ const QueryParams = Type.Object({
 	limit: Type.Optional(Type.Number({ description: "Max records returned. Default 50.", default: 50 })),
 });
 
+function mermaidId(raw: string): string {
+	const id = raw.replace(/[^A-Za-z0-9_]/g, "_");
+	return /^[A-Za-z]/.test(id) ? id : `n_${id}`;
+}
+
+function mermaidLabel(text: string, max = 72): string {
+	const clean = text
+		.replace(/["\\]/g, "'")
+		.replace(/[<>]/g, " ")
+		.replace(/[[\]{}()|]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+function mermaidNode(record: TraceRecord): string {
+	const id = mermaidId(record.id);
+	const label = `${record.id}: ${record.kind} - ${mermaidLabel(record.title)}`;
+	switch (record.kind) {
+		case "decision":
+			return `${id}{"${label}"}`;
+		case "concept":
+			return `${id}("${label}")`;
+		case "evidence":
+			return `${id}[/"${label}"/]`;
+		case "path":
+			return `${id}[["${label}"]]`;
+		case "deadend":
+			return `${id}(["${label}"])`;
+		default:
+			return `${id}["${label}"]`;
+	}
+}
+
+function buildProvenance(records: TraceRecord[], direction: string): string {
+	const lines = [`flowchart ${direction}`];
+	const kinds: Kind[] = ["finding", "decision", "concept", "path", "evidence", "deadend"];
+	for (const kind of kinds) {
+		const group = records.filter((record) => record.kind === kind);
+		if (group.length === 0) continue;
+		lines.push(`  subgraph ${kind}`);
+		for (const record of group) lines.push(`    ${mermaidNode(record)}`);
+		lines.push("  end");
+	}
+	for (const record of records) {
+		for (const dep of record.supports ?? []) {
+			if (records.some((candidate) => candidate.id === dep)) {
+				lines.push(`  ${mermaidId(dep)} --> ${mermaidId(record.id)}`);
+			}
+		}
+	}
+	return lines.join("\n");
+}
+
+function buildPath(records: TraceRecord[], direction: string): string {
+	const paths = records.filter((record) => record.kind === "path");
+	if (paths.length === 0) throw new Error("No path records in this trace.");
+	const lines = [`flowchart ${direction}`];
+	paths.forEach((record, index) => {
+		const base = `path${index}`;
+		lines.push(`  subgraph ${base}["${mermaidLabel(`${record.id}: ${record.title}`)}"]`);
+		lines.push(`    ${base}_start(["start"])`);
+		(record.steps ?? []).forEach((step, stepIndex) => {
+			const label = `${stepIndex + 1}. ${mermaidLabel(step.action)}<br/>${mermaidLabel(step.ref)}`;
+			lines.push(`    ${base}_s${stepIndex}["${label}"]`);
+		});
+		lines.push(`    ${base}_end(["end"])`);
+		const chain = [
+			`${base}_start`,
+			...(record.steps ?? []).map((_, stepIndex) => `${base}_s${stepIndex}`),
+			`${base}_end`,
+		];
+		lines.push(`    ${chain.join(" --> ")}`);
+		lines.push("  end");
+	});
+	return lines.join("\n");
+}
+
+function buildDecision(records: TraceRecord[], direction: string): string {
+	const decisions = records.filter((record) => record.kind === "decision");
+	if (decisions.length === 0) throw new Error("No decision records in this trace.");
+	const deadends = records.filter((record) => record.kind === "deadend");
+	const lines = [`flowchart ${direction}`, "  subgraph decisions"];
+	for (const record of decisions) lines.push(`    ${mermaidNode(record)}`);
+	lines.push("  end");
+	if (deadends.length > 0) {
+		lines.push("  subgraph rejected");
+		for (const record of deadends) lines.push(`    ${mermaidNode(record)}`);
+		lines.push("  end");
+	}
+	for (const decision of decisions) {
+		for (const dep of decision.supports ?? []) {
+			const source = records.find((record) => record.id === dep);
+			if (source) lines.push(`  ${mermaidId(source.id)} --> ${mermaidId(decision.id)}`);
+		}
+		for (const deadend of deadends) {
+			if ((deadend.supports ?? []).includes(decision.id) || (decision.supports ?? []).includes(deadend.id)) {
+				lines.push(`  ${mermaidId(decision.id)} -.-> ${mermaidId(deadend.id)}`);
+			}
+		}
+	}
+	return lines.join("\n");
+}
+
+const MermaidParams = Type.Object({
+	trace: Type.String({ description: "Trace id slug." }),
+	diagram: Type.Optional(
+		StringEnum(["provenance", "path", "decision"] as const, {
+			description: "Diagram type. provenance shows record dependencies, path shows narrowing steps, decision shows choices and rejected alternatives.",
+			default: "provenance",
+		}),
+	),
+	includeDeadends: Type.Optional(
+		Type.Boolean({
+			description: "Include deadend records in provenance and path diagrams. Decision diagrams always include them.",
+			default: false,
+		}),
+	),
+	direction: Type.Optional(
+		StringEnum(["LR", "TD"] as const, { description: "Flow direction. Default LR.", default: "LR" }),
+	),
+	write: Type.Optional(
+		Type.Boolean({ description: "Also save diagram-<type>.mmd in the trace folder.", default: false }),
+	),
+});
+
 export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "trace_append",
@@ -204,8 +330,10 @@ export default function (pi: ExtensionAPI) {
 			"Keep body under 1200 characters. At least one ref is required.",
 		].join(" "),
 		promptGuidelines: [
-			"Use trace_append when a conclusion is established and the orchestrator may need the detail or the source behind it. Do not append one record per file read.",
-			"Use kind=path for the ordered narrowing procedure, kind=concept for definitions the user may need, and kind=deadend only for a ruled-out path with a concrete refuting ref.",
+			"Append only records that would let a reader present the work or answer technical questions about it. If a record would not survive that bar, do not append it. Skip mundane steps such as pwd, directory listings, or merely opening a file.",
+			"One record per established conclusion, not per action. Use finding for a conclusion, decision for a choice and its rejected alternative, concept only when the reader will need the definition, path for the ordered narrowing steps, evidence for a source excerpt, and deadend only with a concrete refuting ref.",
+			"Use the trace id the orchestrator supplies; do not invent a new one. Every record needs a real ref, and the body stays under 1200 characters.",
+			"After appending, include trace: <id> in your final handoff with a 3 to 6 bullet summary. Do not dump trace contents into the report.",
 		],
 		parameters: AppendParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -255,7 +383,8 @@ export default function (pi: ExtensionAPI) {
 			"Start with outline, then get only the ids or kinds you need, then evidence for citations.",
 		].join(" "),
 		promptGuidelines: [
-			"Use trace_query before writing a teaching answer so the detail comes from records rather than a long report.",
+			"Choose the trace id before delegating and pass it in the task. The trace exists once the first record is appended.",
+			"Use trace_query before writing a teaching answer so the detail comes from records rather than a long report. Read in layers: outline, then get the ids or kinds you need, then evidence for citations.",
 			"Default reads exclude deadend records. Set includeDeadends only when a prior negative result matters.",
 		],
 		parameters: QueryParams,
@@ -339,6 +468,49 @@ export default function (pi: ExtensionAPI) {
 			return {
 				content: [{ type: "text" as const, text }],
 				details: { action: params.action, trace, ids: selected.map((r) => r.id) },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "trace_mermaid",
+		label: "Trace mermaid",
+		description: [
+			"Render a trace as a Mermaid diagram.",
+			"provenance shows record dependencies, path shows the narrowing steps, decision shows choices and rejected alternatives.",
+			"Returns a fenced Mermaid block the orchestrator can print or save.",
+		].join(" "),
+		promptGuidelines: [
+			"Use trace_mermaid when the user asks for a diagram, visual, or presentation of the trace.",
+			"Return the Mermaid block and a one-line caption. Do not restate every node in prose.",
+			"Set write: true to also save diagram-<type>.mmd in the trace folder.",
+		],
+		parameters: MermaidParams,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const trace = normalizeTraceId(params.trace);
+			const all = readRecords(path.join(traceRoot(ctx.cwd), trace, "trace.jsonl"));
+			if (all.length === 0) throw new Error(`Trace not found or empty: ${trace}`);
+			const includeDeadends = params.includeDeadends ?? false;
+			const direction = params.direction ?? "LR";
+			const diagram = params.diagram ?? "provenance";
+			const visibleRecords = includeDeadends ? all : all.filter((record) => record.kind !== "deadend");
+			const mermaid =
+				diagram === "decision"
+					? buildDecision(all, direction)
+					: diagram === "path"
+						? buildPath(visibleRecords, direction)
+						: buildProvenance(visibleRecords, direction);
+			let saved: string | undefined;
+			if (params.write) {
+				const file = path.join(traceRoot(ctx.cwd), trace, `diagram-${diagram}.mmd`);
+				await fs.promises.mkdir(path.dirname(file), { recursive: true });
+				await fs.promises.writeFile(file, `${mermaid}\n`, "utf8");
+				saved = path.relative(ctx.cwd, file);
+			}
+			const text = `\`\`\`mermaid\n${mermaid}\n\`\`\`${saved ? `\n\nSaved to ${saved}` : ""}`;
+			return {
+				content: [{ type: "text" as const, text }],
+				details: { trace, diagram, records: visibleRecords.length, saved },
 			};
 		},
 	});

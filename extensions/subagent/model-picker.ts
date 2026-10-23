@@ -2,8 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getSupportedThinkingLevels, type Model, type Api } from "@earendil-works/pi-ai";
-import { getAgentDir, withFileMutationQueue, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { discoverAgents, type AgentConfig } from "./agents.ts";
+import { BUILTIN_PROFILES, PROFILE_ENTRY, createProfileMarker, readSessionProfile, resolveProfileModel, type ProfileMarker } from "./session-profiles.ts";
 
 export interface Preference { model: string | null; thinking?: string }
 type Preferences = Record<string, Preference>;
@@ -83,12 +84,46 @@ export async function savePreference(name: string, value: Preference | string | 
 		await fs.promises.mkdir(path.dirname(file), { recursive: true });
 		const temporary = `${file}.${randomUUID()}.tmp`;
 		try {
-			await fs.promises.writeFile(temporary, `${JSON.stringify({ version: 2, agents: preferences }, null, 2)}\n`, { mode: 0o600 });
+			const config = readProfileDefinitions(file);
+			await fs.promises.writeFile(temporary, `${JSON.stringify({ ...config.raw, version: 2, agents: preferences }, null, 2)}\n`, { mode: 0o600 });
 			await fs.promises.rename(temporary, file);
 		} finally {
 			await fs.promises.rm(temporary, { force: true });
 		}
 	});
+}
+
+function readProfileDefinitions(file = preferencesPath()) {
+	let raw: Record<string, any> = {};
+	try { raw = JSON.parse(fs.readFileSync(file, "utf8")); }
+	catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+	const profiles = { ...BUILTIN_PROFILES };
+	if (raw.profiles !== undefined) {
+		if (!raw.profiles || typeof raw.profiles !== "object" || Array.isArray(raw.profiles)) throw new Error("Invalid profile definitions");
+		for (const [name, value] of Object.entries(raw.profiles)) {
+			if (typeof value !== "string" || !value.trim()) throw new Error(`Profile ${name} must name a provider/model-id`);
+			Object.defineProperty(profiles, name, { value, enumerable: true, configurable: true });
+		}
+	}
+	if (raw.defaultProfile !== undefined && (typeof raw.defaultProfile !== "string" || !Object.hasOwn(profiles, raw.defaultProfile))) {
+		throw new Error("defaultProfile must name an existing profile");
+	}
+	return { raw, profiles, defaultProfile: raw.defaultProfile as string | undefined };
+}
+
+/** Shared by the inspector and every spawn mode. Session assignments override, never rewrite, disk preferences. */
+export function effectivePreferences(ctx: ExtensionContext, agents: AgentConfig[]): { preferences: Preferences; profile?: string; session: boolean; profileAgents?: ReadonlySet<string> } {
+	const preferences = readPreferences();
+	const marker = readSessionProfile(ctx);
+	if (marker) return { preferences: Object.assign(preferences, marker.assignments), profile: marker.profile!, session: true, profileAgents: new Set(Object.keys(marker.assignments)) };
+	const config = readProfileDefinitions();
+	if (config.defaultProfile) {
+		const model = resolveProfileModel(config.profiles[config.defaultProfile], ctx.modelRegistry.getAll());
+		const base = applyModelPreferences(agents, preferences, [], new Set());
+		const snapshot = createProfileMarker(config.defaultProfile, model, base, ctx.modelRegistry.getAll());
+		return { preferences: Object.assign(preferences, snapshot.assignments), profile: config.defaultProfile, session: false, profileAgents: new Set(Object.keys(snapshot.assignments)) };
+	}
+	return { preferences, session: false };
 }
 
 function describeAgent(agent: AgentConfig, preferences: Preferences): string {
@@ -97,6 +132,38 @@ function describeAgent(agent: AgentConfig, preferences: Preferences): string {
 }
 
 export function registerModelPicker(pi: ExtensionAPI): void {
+	const output = (ctx: ExtensionContext, text: string, error = false) => {
+		if (ctx.hasUI) ctx.ui.notify(text, error ? "error" : "info");
+		else process.stderr.write(text + "\n");
+	};
+	const profileCommand = async (args: string, ctx: ExtensionContext) => {
+		try {
+			const name = args.trim();
+			if (name === "clear") {
+				const marker: ProfileMarker = { version: 1, profile: null, assignments: {} };
+				pi.appendEntry(PROFILE_ENTRY, marker);
+				output(ctx, "Session profile cleared. Future runs use configured defaults. Global choices unchanged.");
+				return;
+			}
+			const config = readProfileDefinitions();
+			if (!name || name === "list" || name === "ls") {
+				const active = readSessionProfile(ctx)?.profile ?? config.defaultProfile ?? "none (agent defaults)";
+				output(ctx, `Current profile: ${active}\n${Object.entries(config.profiles).map(([n, model]) => `${n}: ${model}`).join("\n")}\nUsage: /subagent-profile <name> | clear`);
+				return;
+			}
+			if (!Object.hasOwn(config.profiles, name)) throw new Error(`Unknown profile '${name}'. Use /subagent-profile to list profiles.`);
+			await ctx.modelRegistry.refresh();
+			const model = resolveProfileModel(config.profiles[name], ctx.modelRegistry.getAvailable());
+			const agents = discoverAgents(ctx.cwd, "user").agents;
+			if (!agents.length) throw new Error("No user agents found. Nothing changed.");
+			const current = effectivePreferences(ctx, agents).preferences;
+			const base = applyModelPreferences(agents, current, [], new Set());
+			const marker = createProfileMarker(name, model, base, ctx.modelRegistry.getAll());
+			pi.appendEntry(PROFILE_ENTRY, marker);
+			output(ctx, `Session profile: ${name}. Thinking preserved; global choices unchanged. Applies to future user-agent runs only.\n${Object.entries(marker.assignments).map(([agent, p]) => `${agent}: ${p.model} | thinking: ${p.thinking ?? "child defaults (unchanged)"}`).join("\n")}\nProject agents and already-running children are unchanged.`);
+		} catch (error) { output(ctx, `Subagent profile: ${error instanceof Error ? error.message : String(error)}`, true); }
+	};
+	pi.registerCommand("subagent-profile", { description: "Choose a session-only subagent profile, or clear it", handler: profileCommand });
 	pi.registerCommand("subagent-model", {
 		description: "Set user subagent models/thinking: [agent], list, or set <agent> <model>[:thinking]",
 		handler: async (args, ctx) => {
@@ -108,13 +175,15 @@ export function registerModelPicker(pi: ExtensionAPI): void {
 			const words = args.trim().split(/\s+/).filter(Boolean);
 			try {
 				const agents = discoverAgents(ctx.cwd, "user").agents.sort((a, b) => a.name.localeCompare(b.name));
-				const preferences = readPreferences();
+				const effective = effectivePreferences(ctx, agents);
+				const preferences = effective.preferences;
+				const activeNotice = effective.profile ? ` Session profile '${effective.profile}' still takes precedence; /subagent-profile clear restores saved choices.` : "";
 				const list = () => output(agents.length ? agents.map((agent) => {
 					const saved = own(preferences, agent.name);
 					const preference = saved ? preferences[agent.name] : undefined;
 					const model = preference ? preference.model ?? "Pi default" : agent.model ?? "Pi default";
 					const thinking = preference ? preference.thinking ?? "child defaults" : agent.thinking ?? "child defaults";
-					return `${agent.name} — ${model} | thinking: ${thinking} | source: ${saved ? "saved override" : "definition/default (default)"}`;
+					return `${agent.name} — ${model} | thinking: ${thinking} | source: ${effective.profile && effective.profileAgents?.has(agent.name) ? `${effective.session ? "session" : "default"} profile (${effective.profile})` : saved ? "saved override" : "definition/default (default)"}`;
 				}).join("\n") : "No user subagents found in the agents directory.");
 				if ((words[0] === "list" || words[0] === "ls") && words.length === 1) {
 					list();
@@ -157,7 +226,7 @@ export function registerModelPicker(pi: ExtensionAPI): void {
 						}
 					}
 					await savePreference(name, preference);
-					output(`${name}: ${preference.model} | thinking: ${preference.thinking ?? "child defaults"}.${models === undefined ? " Model was not registry-validated; any colon suffix was preserved as part of the model ID." : ""} Applies to future subagent runs; main session unchanged.`);
+					output(`${name}: ${preference.model} | thinking: ${preference.thinking ?? "child defaults"}.${models === undefined ? " Model was not registry-validated; any colon suffix was preserved as part of the model ID." : ""} Applies to future subagent runs; main session unchanged.${activeNotice}`);
 					return;
 				}
 				let name = args.trim();
@@ -225,7 +294,7 @@ export function registerModelPicker(pi: ExtensionAPI): void {
 				// Model and thinking are committed together only after all dialogs finish.
 				await savePreference(name, preference);
 				const summary = preference ? `${preference.model ?? "Pi default"} | thinking: ${preference.thinking ?? "child defaults"}` : "agent definition | thinking: child defaults";
-				ctx.ui.notify(`${name}: ${summary}. Applies to future subagent runs; main session unchanged.`, "info");
+				ctx.ui.notify(`${name}: ${summary}. Applies to future subagent runs; main session unchanged.${activeNotice}`, "info");
 			} catch (error) {
 				const message = `Subagent model picker: ${error instanceof Error ? error.message : String(error)}`;
 				if (ctx.hasUI) ctx.ui.notify(message, "error");
