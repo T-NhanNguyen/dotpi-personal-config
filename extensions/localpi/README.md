@@ -18,7 +18,8 @@ fallback provider without touching global config or thinking levels:
 ## Notes
 
 - Shortcuts (exact, no registry lookup): `gpt` → `openai/gpt-6.1-sol`,
-  `deepseek` → `deepseek/deepseek-v4.1-flash`, `muse` →
+  `deepseek` → `deepseek/deepseek-flash`, `kimi` →
+  `kimi-coding/kimi-for-coding`, `muse` →
   `meta/muse-spark-1.3-contributor`. Full names/ids still resolve via the
   model registry when available.
 

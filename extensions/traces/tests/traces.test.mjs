@@ -6,12 +6,32 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
-const host = process.env.PI_TEST_HOST || path.join(execSync('npm root -g', { encoding: 'utf8' }).trim(), '@earendil-works/pi-coding-agent');
+const host = (() => {
+	const candidates = [
+		process.env.PI_TEST_HOST,
+		path.join(os.homedir(), '.bun/install/global/node_modules/@earendil-works/pi-coding-agent'),
+		path.join(execSync('npm root -g', { encoding: 'utf8' }).trim(), '@earendil-works/pi-coding-agent'),
+	];
+	for (const candidate of candidates) {
+		if (candidate && fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+	}
+	throw new Error('Cannot locate @earendil-works/pi-coding-agent. Set PI_TEST_HOST to its install dir.');
+})();
 const require = createRequire(path.join(host, 'package.json'));
 const { createJiti } = require('jiti');
+const hostPiAiCompat = (() => {
+	const candidates = [
+		path.join(path.dirname(host), 'pi-ai/dist/compat.js'),
+		path.join(host, 'node_modules/@earendil-works/pi-ai/dist/compat.js'),
+	];
+	for (const candidate of candidates) {
+		if (fs.existsSync(candidate)) return candidate;
+	}
+	throw new Error('Cannot locate @earendil-works/pi-ai compat.js next to the test host.');
+})();
 const alias = {
   '@earendil-works/pi-coding-agent': path.join(host, 'dist/index.js'),
-  '@earendil-works/pi-ai': path.join(host, 'node_modules/@earendil-works/pi-ai/dist/compat.js'),
+  '@earendil-works/pi-ai': hostPiAiCompat,
   '@earendil-works/pi-agent-core': path.join(host, 'node_modules/@earendil-works/pi-agent-core/dist/index.js'),
   '@earendil-works/pi-tui': path.join(host, 'node_modules/@earendil-works/pi-tui/dist/index.js'),
   typebox: require.resolve('typebox'),

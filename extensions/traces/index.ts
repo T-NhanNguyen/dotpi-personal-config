@@ -18,7 +18,7 @@ const TRACE_ROOT = path.join(".dev-vault", "traces");
 const MAX_BODY = 1200;
 const MAX_TITLE = 200;
 const KINDS = ["finding", "decision", "concept", "path", "evidence", "deadend"] as const;
-const ACTIONS = ["list", "outline", "get", "evidence", "search"] as const;
+const ACTIONS = ["list", "outline", "get", "evidence", "search", "export"] as const;
 const CONFIDENCE = ["verified", "inferred", "unverified"] as const;
 
 type Kind = (typeof KINDS)[number];
@@ -37,6 +37,12 @@ interface TraceStep {
 	ref: string;
 }
 
+interface TraceCheck {
+	method: string;
+	output: string;
+	revision?: string;
+}
+
 interface TraceRecord {
 	id: string;
 	trace: string;
@@ -46,6 +52,7 @@ interface TraceRecord {
 	refs: TraceRef[];
 	supports?: string[];
 	confidence?: string;
+	check?: TraceCheck;
 	steps?: TraceStep[];
 	agent?: string;
 	ts: string;
@@ -136,18 +143,32 @@ function visible(record: TraceRecord, includeDeadends: boolean): boolean {
 	return includeDeadends || record.kind !== "deadend";
 }
 
-function selectRecords(
+function filterRecords(
 	records: TraceRecord[],
-	params: { ids?: string[]; kind?: Kind; includeDeadends?: boolean; limit?: number },
+	params: { ids?: string[]; kind?: Kind; includeDeadends?: boolean },
 ): TraceRecord[] {
 	const ids = params.ids ? new Set(params.ids) : undefined;
-	const selected = records.filter(
+	return records.filter(
 		(record) =>
 			visible(record, params.includeDeadends ?? false) &&
 			(!ids || ids.has(record.id)) &&
 			(!params.kind || record.kind === params.kind),
 	);
-	return selected.slice(0, params.limit ?? 50);
+}
+
+function selectRecords(
+	records: TraceRecord[],
+	params: { ids?: string[]; kind?: Kind; includeDeadends?: boolean; limit?: number; offset?: number },
+): TraceRecord[] {
+	const offset = Math.max(0, Math.floor(params.offset ?? 0));
+	const filtered = filterRecords(records, params);
+	return filtered.slice(offset, offset + (params.limit ?? 50));
+}
+
+function searchHaystack(record: TraceRecord): string {
+	const refsText = record.refs.map((ref) => `${ref.path ?? ""}\n${ref.note ?? ""}`).join("\n");
+	const stepsText = (record.steps ?? []).map((step) => `${step.action}\n${step.ref}`).join("\n");
+	return `${record.title}\n${record.body}\n${refsText}\n${stepsText}`.toLowerCase();
 }
 
 const RefParams = Type.Object({
@@ -163,6 +184,12 @@ const StepParams = Type.Object({
 	ref: Type.String({ description: "Source or page for this step." }),
 });
 
+const CheckParams = Type.Object({
+	method: Type.String({ description: "How the claim was reproduced: test, command, read, review." }),
+	output: Type.String({ description: "Observed output or measured value. Required when confidence is verified." }),
+	revision: Type.Optional(Type.String({ description: "File revision or commit the check ran against." })),
+});
+
 const AppendParams = Type.Object({
 	trace: Type.String({ description: "Trace id slug, e.g. timer2-startup-clock." }),
 	kind: StringEnum(KINDS, { description: "Record kind." }),
@@ -175,7 +202,8 @@ const AppendParams = Type.Object({
 	supports: Type.Optional(
 		Type.Array(Type.String(), { description: "Ids this record supports or depends on." }),
 	),
-	confidence: Type.Optional(StringEnum(CONFIDENCE, { description: "Confidence in the record." })),
+	confidence: Type.Optional(StringEnum(CONFIDENCE, { description: "Confidence in the record. Use verified only with a check." })),
+	check: Type.Optional(CheckParams),
 	steps: Type.Optional(
 		Type.Array(StepParams, { description: "Ordered narrowing procedure for kind=path." }),
 	),
@@ -192,6 +220,8 @@ const QueryParams = Type.Object({
 		Type.Boolean({ description: "Include deadend records. Default false.", default: false }),
 	),
 	limit: Type.Optional(Type.Number({ description: "Max records returned. Default 50.", default: 50 })),
+	offset: Type.Optional(Type.Number({ description: "Skip first N matching records. Default 0.", default: 0 })),
+	dest: Type.Optional(Type.String({ description: "Destination folder for action=export. Receives trace.jsonl and meta.json." })),
 });
 
 function mermaidId(raw: string): string {
@@ -345,6 +375,10 @@ export default function (pi: ExtensionAPI) {
 			if (!body) throw new Error("Body must not be empty.");
 			if (body.length > MAX_BODY) throw new Error(`Body must be ${MAX_BODY} characters or fewer.`);
 			if (params.refs.length === 0) throw new Error("At least one ref is required.");
+			if (params.confidence === "verified" && (!params.check || !params.check.output.trim())) {
+				throw new Error("Verified requires a check with observed output. Use inferred until you reproduce the result.");
+			}
+			if (params.check && !params.check.output.trim()) throw new Error("Check output must not be empty.");
 
 			const dir = path.join(traceRoot(ctx.cwd), trace);
 			const file = path.join(dir, "trace.jsonl");
@@ -352,6 +386,8 @@ export default function (pi: ExtensionAPI) {
 			await withFileMutationQueue(file, async () => {
 				ensureTrace(dir, trace);
 				const records = readRecords(file);
+				const missing = (params.supports ?? []).filter((id) => !records.some((candidate) => candidate.id === id));
+				if (missing.length > 0) throw new Error(`Unknown supports ids: ${missing.join(", ")}. Append the source records first.`);
 				record = {
 					id: nextRecordId(params.kind, records),
 					trace,
@@ -361,6 +397,7 @@ export default function (pi: ExtensionAPI) {
 					refs: params.refs,
 					...(params.supports ? { supports: params.supports } : {}),
 					...(params.confidence ? { confidence: params.confidence } : {}),
+					...(params.check ? { check: params.check } : {}),
 					...(params.steps ? { steps: params.steps } : {}),
 					...(params.agent ? { agent: params.agent } : {}),
 					ts: new Date().toISOString(),
@@ -391,6 +428,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const root = traceRoot(ctx.cwd);
 			const limit = Math.max(1, Math.min(params.limit ?? 50, 200));
+			const offset = Math.max(0, Math.floor(params.offset ?? 0));
 			const includeDeadends = params.includeDeadends ?? false;
 
 			if (params.action === "list") {
@@ -419,13 +457,31 @@ export default function (pi: ExtensionAPI) {
 				for (const name of names) {
 					for (const record of readRecords(path.join(root, name, "trace.jsonl"))) {
 						if (!visible(record, includeDeadends)) continue;
-						if (`${record.title}\n${record.body}`.toLowerCase().includes(query)) {
+						if (searchHaystack(record).includes(query)) {
 							matches.push(`${name}/${record.id} [${record.kind}] ${record.title}`);
 						}
 					}
 				}
-				const text = matches.length === 0 ? "No matches." : matches.slice(0, limit).join("\n");
+				const total = matches.length;
+				const page = matches.slice(offset, offset + limit);
+				const text = total === 0 ? "No matches." : page.join("\n");
 				return { content: [{ type: "text" as const, text }], details: { action: params.action, matches } };
+			}
+
+			if (params.action === "export") {
+				if (!params.trace) throw new Error("export requires a trace id.");
+				if (!params.dest) throw new Error("export requires a dest folder.");
+				const name = normalizeTraceId(params.trace);
+				const srcDir = path.join(root, name);
+				const srcFile = path.join(srcDir, "trace.jsonl");
+				const srcMeta = path.join(srcDir, "meta.json");
+				if (!fs.existsSync(srcFile)) throw new Error(`Trace not found or empty: ${name}`);
+				const count = readRecords(srcFile).length;
+				await fs.promises.mkdir(params.dest, { recursive: true });
+				await fs.promises.copyFile(srcFile, path.join(params.dest, `${name}.trace.jsonl`));
+				if (fs.existsSync(srcMeta)) await fs.promises.copyFile(srcMeta, path.join(params.dest, `${name}.meta.json`));
+				const saved = path.join(params.dest, `${name}.trace.jsonl`);
+				return { content: [{ type: "text" as const, text: `Exported ${name} | records=${count} to ${saved}` }], details: { action: params.action, trace: name, dest: saved, total: count } };
 			}
 
 			if (!params.trace) throw new Error(`${params.action} requires a trace id.`);
@@ -434,10 +490,11 @@ export default function (pi: ExtensionAPI) {
 			if (records.length === 0) throw new Error(`Trace not found or empty: ${trace}`);
 
 			if (params.action === "outline") {
-				const text = selectRecords(records, { includeDeadends, limit })
-					.map((record) => `${record.id} [${record.kind}] ${record.title}`)
-					.join("\n");
-				return { content: [{ type: "text" as const, text }], details: { action: params.action, trace } };
+				const matched = filterRecords(records, { ids: params.ids, kind: params.kind, includeDeadends });
+				const page = matched.slice(offset, offset + limit);
+				const lines = page.map((record) => `${record.id} [${record.kind}] ${record.title}`);
+				const text = [`trace ${trace} | total=${matched.length} shown=${page.length} offset=${offset} limit=${limit}`, ...lines].join("\n");
+				return { content: [{ type: "text" as const, text }], details: { action: params.action, trace, total: matched.length, offset, limit } };
 			}
 
 			const selected = selectRecords(records, {
@@ -445,6 +502,7 @@ export default function (pi: ExtensionAPI) {
 				kind: params.kind,
 				includeDeadends,
 				limit,
+				offset,
 			});
 
 			if (params.action === "evidence") {
@@ -462,7 +520,8 @@ export default function (pi: ExtensionAPI) {
 						: "";
 					const supports = record.supports?.length ? `\nSupports: ${record.supports.join(", ")}` : "";
 					const confidence = record.confidence ? `\nConfidence: ${record.confidence}` : "";
-					return `### ${record.id} [${record.kind}] ${record.title}\n${record.body}${steps}${supports}${confidence}\n\nRefs:\n${formatRefs(record.refs)}`;
+					const check = record.check ? `\nCheck: ${record.check.method} | ${record.check.output}${record.check.revision ? ` @ ${record.check.revision}` : ""}` : "";
+					return `### ${record.id} [${record.kind}] ${record.title}\n${record.body}${steps}${supports}${confidence}${check}\n\nRefs:\n${formatRefs(record.refs)}`;
 				})
 				.join("\n\n");
 			return {
@@ -503,8 +562,10 @@ export default function (pi: ExtensionAPI) {
 			let saved: string | undefined;
 			if (params.write) {
 				const file = path.join(traceRoot(ctx.cwd), trace, `diagram-${diagram}.mmd`);
-				await fs.promises.mkdir(path.dirname(file), { recursive: true });
-				await fs.promises.writeFile(file, `${mermaid}\n`, "utf8");
+				await withFileMutationQueue(file, async () => {
+					await fs.promises.mkdir(path.dirname(file), { recursive: true });
+					await fs.promises.writeFile(file, `${mermaid}\n`, "utf8");
+				});
 				saved = path.relative(ctx.cwd, file);
 			}
 			const text = `\`\`\`mermaid\n${mermaid}\n\`\`\`${saved ? `\n\nSaved to ${saved}` : ""}`;

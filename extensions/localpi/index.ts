@@ -30,7 +30,8 @@ const repoExtensionsDir = join(packageDir, "extensions");
 /** Barebone provider shortcuts: short word → exact registry id. */
 const MODEL_SHORTCUTS: Record<string, string> = {
 	gpt: "openai/gpt-6.1-sol",
-	deepseek: "deepseek/deepseek-v4.1-flash",
+	deepseek: "deepseek/deepseek-flash",
+	kimi: "kimi-coding/kimi-for-coding",
 	muse: "meta/muse-spark-1.3-contributor",
 };
 

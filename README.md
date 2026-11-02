@@ -56,8 +56,11 @@ override reference loading (see below).
 
 ## What loads
 
-All bundled extensions are auto-loaded, including `extensions/prompt-snippets/`
-and `extensions/subagent/`.
+All bundled extensions are auto-loaded. `extensions/prompt-snippets/` and
+`extensions/subagent/` work without extra setup. `extensions/kinetograph/` and
+`extensions/model-profiles/` are optional. Kinetograph prints a warning and
+registers nothing when its video runtime is missing. Model-profiles does
+nothing until you run `/model-profile`.
 
 ## Layout
 
@@ -70,10 +73,20 @@ dotpi-personal-config/
 │   ├── prompt-snippets/
 │   │   ├── index.ts
 │   │   └── snippets/
-│   └── subagent/
+│   ├── subagent/
+│   │   ├── index.ts
+│   │   ├── agents.ts
+│   │   ├── model-picker.ts
+│   │   ├── README.md
+│   │   └── tests/
+│   ├── kinetograph/ (optional)
+│   │   ├── index.ts
+│   │   ├── runtime.ts
+│   │   ├── README.md
+│   │   └── tests/
+│   └── model-profiles/ (optional)
 │       ├── index.ts
-│       ├── agents.ts
-│       ├── model-picker.ts
+│       ├── store.ts
 │       ├── README.md
 │       └── tests/
 └── agents/
@@ -84,6 +97,7 @@ dotpi-personal-config/
     ├── transcript-review.md
     ├── documentation-reviewer.md
     ├── code-auditor.md
+    ├── video-maker.md
     └── references/
         └── test-integrity.md
 ```
@@ -102,13 +116,36 @@ manifest uses `extensions/*/index.ts`, so new extension directories with an
 `index.ts` entry point are picked up without editing `package.json`. All
 extensions in this repository are intentional and included; the manifest has
 no extension exclusions.
-Skills, prompts, and themes are discovered conventionally when added to their
-respective directories; those directories need not exist until needed.
+The Kinetograph extension dynamically loads its selected runtime's matching skill
+(local fork preferred; installed dependency fallback). `pi.skills` is intentionally
+empty to avoid advertising two Kinetograph versions. Prompts and themes are discovered conventionally when added to
+their respective directories; those directories need not exist until needed.
 
 ## prompt-snippets
 
 Press **alt+s** or run **/snippets** to open the menu and toggle prompt rules.
 Snippet files live in `extensions/prompt-snippets/snippets/`.
+
+## Kinetograph (optional)
+
+Kinetograph adds video creation tools. The rest of this package works without
+it. When the extension cannot find a Kinetograph runtime, it prints a warning
+and registers nothing, so a plain install is not broken by its absence.
+
+To enable it, follow the [canonical Kinetograph setup, rebuild, and reconnect procedure](extensions/kinetograph/README.md).
+It covers Node 22+, dependency authorization, preserving the unpublished local
+integration, environment setup **before launching Pi**, existing agent links,
+`/mcp` overrides, discovery-only `tool_search`, and focused verification commands.
+`/reload` does not import environment changes from another shell.
+
+The extension pairs the selected CLI with its matching `/skill:kinetograph`.
+audio.cpp narration is a second optional layer on top of the video tools. A
+built sibling fork (or `KINETOGRAPH_FORK_ROOT`) adds exact-file audio.cpp
+narration. The installed upstream fallback has **no `audio_narrate`**; the
+`video-maker` agent must stop narration if the fork is missing. Plain upstream
+clones cannot recover the unpublished integration: preserve its branch/patch
+and uncommitted files. The agent requires script and sound-sample approval
+before video production and uses that same approved WAV in the video.
 
 ## Bundled agents
 

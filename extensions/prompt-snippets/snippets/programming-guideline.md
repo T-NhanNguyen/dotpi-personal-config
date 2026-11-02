@@ -80,14 +80,20 @@ not optional merely because design preferences admit trade-offs.
 - Follow established project naming, formatting, module, and dependency
   conventions. Where none exist, prefer idiomatic conventions for the language;
   ask only when the choice materially affects the task.
-- Reduce memorization of operator precedence by utilizing explicitly isolates 
-  on truth conditions via parenthesis and curly brackets.
+- Reduce reliance on remembering operator precedence by 
+  using parentheses and curly braces to clearly isolate truth conditions.
 - Use clear, proportionate names and straightforward control flow. Avoid clever
   constructs that obscure intent, but do not replace well-understood idioms
   merely because they differ from another language's style.
+- Use consistent terminology, and stick to one word for a concept (e.g., always use “packet” for IMU data, don’t mix it with “frame” or “sample”). Consider the reader's existing mental taxes and avoid adding additional strain.
+- Use names that clearly describe what an action does (e.g., “process_bytes” instead of “feed”, and terms like “raw frame” and “decoded packet.”). Include prefixes for modules (e.g., “store_complete_frame” instead of “complete_frame” when storing a decoded packet).
 - Keep dependencies explicit and remove unused imports or includes. Choose eager
   or deferred loading based on initialization behavior, dependency cycles,
-  startup cost, and runtime constraints—not a blanket prohibition.
+  startup cost, and runtime constraints—not a blanket prohibition. As a narrow,
+  explicitly authorized C exception, a .c file may rely on its own public header
+  for shared declaration types while including C-only dependencies directly.
+  Document that exception; it does not replace general dependency guidance or
+  mandate redundant includes globally.
 - Handle resources and errors using the language's appropriate mechanisms.
   Account for cleanup, cancellation, partial failure, and ownership where they
   apply. Do not silently discard failures or weaken required safety checks.
@@ -101,10 +107,17 @@ not optional merely because design preferences admit trade-offs.
   why, non-obvious constraints, invariants, trade-offs, and surprising behavior.
   Avoid restating obvious operations or relying on names alone to document a
   complex contract.
+- Write concise, literal behavioral sentences describing inputs, outputs,
+  retained state, and actual effects where needed. Do not copy grammatical
+  mistakes from existing source as a style rule. Prefer broadcast or transmit
+  over abstract publish when that is the actual effect; if code only invokes a
+  callback or placeholder, say so without implying it sends data.
 - Document public or non-trivial interfaces in the project's established style,
   including parameters, results, failure modes, side effects, and usage when
   relevant. Use doc comments, external documentation, or both as appropriate;
   neither multiline documentation nor in-code documentation is inherently wrong.
+  Use a concise summary plus needed contract details for complex interfaces;
+  do not force public contracts into a single sentence.
 - Keep documentation accurate and close to its authoritative source. Add external
   guides for concepts, setup, and workflows when useful, rather than maintaining
   a separate catalog of every function by default.

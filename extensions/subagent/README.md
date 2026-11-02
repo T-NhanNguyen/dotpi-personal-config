@@ -5,10 +5,15 @@ Run `/reload` after installing or changing this extension.
 ## Session profiles
 
 Use `/subagent-profile muse` to switch all installed user agents in this session.
-Each agent keeps its current explicit thinking level. A saved thinking preference
-wins over a level in the agent's `model:` suffix. Agents using child thinking
-defaults keep that behavior; their actual child-selected level is not known here.
-The command does not copy the parent session's thinking level.
+For a single-model profile, each agent keeps its current explicit thinking level. A
+saved thinking preference wins over a level in the agent's `model:` suffix. Agents
+using child thinking defaults keep that behavior; their actual child-selected level
+is not known here. The command does not copy the parent session's thinking level.
+
+A profile can also be a per-agent map. Map entries state the model and thinking
+explicitly: `provider/model` for child thinking defaults, `provider/model:level`
+to pin a level, or `provider/model:inherit` to keep the agent's own saved level.
+Agents a map does not list keep their own saved or definition model.
 
 Built-in profiles:
 
@@ -16,7 +21,8 @@ Built-in profiles:
 | --- | --- |
 | `muse` | Muse Spark 1.3 Contributor |
 | `gpt` | GPT 6.1 Sol |
-| `deepseek` | DeepSeek V4.1 Flash |
+| `deepseek` | Per agent: `deepseek-v4-pro:high` for code-auditor and test-merit-gate; `deepseek-flash` with inherited thinking for the rest |
+| `kimi` | Per agent: `k3-256k:high` for code-auditor and test-merit-gate; `kimi-for-coding:high` for test-writer, video-maker and worker; `kimi-for-coding` with child thinking defaults for documentation-reviewer, transcript-review and explore |
 
 - `/subagent-profile` lists profiles and the current selection.
 - `/subagent-profile clear` returns this session to configured defaults.
@@ -53,6 +59,24 @@ model-only profiles and a default for sessions without a selection:
   "agents": {},
   "profiles": { "backup": "provider/model-id" },
   "defaultProfile": "backup"
+}
+```
+
+A profile may instead map agent names to model specs. A `:thinking` suffix is
+split only when it is a real level and the whole string is not an existing model
+ID, so literal IDs containing colons survive. `:inherit` keeps the agent's saved
+level instead of pinning one:
+
+```json
+{
+  "version": 2,
+  "agents": {},
+  "profiles": {
+    "backup": {
+      "worker": "provider/model-id:high",
+      "explore": "provider/cheap-model-id"
+    }
+  }
 }
 ```
 

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { getSupportedThinkingLevels, type Model, type Api } from "@earendil-works/pi-ai";
 import { getAgentDir, withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { discoverAgents, type AgentConfig } from "./agents.ts";
-import { BUILTIN_PROFILES, PROFILE_ENTRY, createProfileMarker, readSessionProfile, resolveProfileModel, type ProfileMarker } from "./session-profiles.ts";
+import { BUILTIN_PROFILES, PROFILE_ENTRY, createProfileMarker, readSessionProfile, type ProfileDefinition, type ProfileMarker } from "./session-profiles.ts";
 
 export interface Preference { model: string | null; thinking?: string }
 type Preferences = Record<string, Preference>;
@@ -101,7 +101,10 @@ function readProfileDefinitions(file = preferencesPath()) {
 	if (raw.profiles !== undefined) {
 		if (!raw.profiles || typeof raw.profiles !== "object" || Array.isArray(raw.profiles)) throw new Error("Invalid profile definitions");
 		for (const [name, value] of Object.entries(raw.profiles)) {
-			if (typeof value !== "string" || !value.trim()) throw new Error(`Profile ${name} must name a provider/model-id`);
+			const valid = (typeof value === "string" && value.trim().length > 0) ||
+				(typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length > 0 &&
+					Object.values(value as Record<string, unknown>).every((v) => typeof v === "string" && v.trim().length > 0));
+			if (!valid) throw new Error(`Profile ${name} must name a provider/model-id, or map agent names to provider/model-id[:thinking]`);
 			Object.defineProperty(profiles, name, { value, enumerable: true, configurable: true });
 		}
 	}
@@ -111,6 +114,13 @@ function readProfileDefinitions(file = preferencesPath()) {
 	return { raw, profiles, defaultProfile: raw.defaultProfile as string | undefined };
 }
 
+/** Renders a string profile as-is and a per-agent map as a compact summary. */
+export function describeProfileDefinition(definition: ProfileDefinition): string {
+	if (typeof definition === "string") return definition;
+	const models = [...new Set(Object.values(definition))].sort();
+	return `${Object.keys(definition).length} agents → ${models.join(", ")}`;
+}
+
 /** Shared by the inspector and every spawn mode. Session assignments override, never rewrite, disk preferences. */
 export function effectivePreferences(ctx: ExtensionContext, agents: AgentConfig[]): { preferences: Preferences; profile?: string; session: boolean; profileAgents?: ReadonlySet<string> } {
 	const preferences = readPreferences();
@@ -118,9 +128,8 @@ export function effectivePreferences(ctx: ExtensionContext, agents: AgentConfig[
 	if (marker) return { preferences: Object.assign(preferences, marker.assignments), profile: marker.profile!, session: true, profileAgents: new Set(Object.keys(marker.assignments)) };
 	const config = readProfileDefinitions();
 	if (config.defaultProfile) {
-		const model = resolveProfileModel(config.profiles[config.defaultProfile], ctx.modelRegistry.getAll());
 		const base = applyModelPreferences(agents, preferences, [], new Set());
-		const snapshot = createProfileMarker(config.defaultProfile, model, base, ctx.modelRegistry.getAll());
+		const snapshot = createProfileMarker(config.defaultProfile, config.profiles[config.defaultProfile], base, ctx.modelRegistry.getAll());
 		return { preferences: Object.assign(preferences, snapshot.assignments), profile: config.defaultProfile, session: false, profileAgents: new Set(Object.keys(snapshot.assignments)) };
 	}
 	return { preferences, session: false };
@@ -148,19 +157,18 @@ export function registerModelPicker(pi: ExtensionAPI): void {
 			const config = readProfileDefinitions();
 			if (!name || name === "list" || name === "ls") {
 				const active = readSessionProfile(ctx)?.profile ?? config.defaultProfile ?? "none (agent defaults)";
-				output(ctx, `Current profile: ${active}\n${Object.entries(config.profiles).map(([n, model]) => `${n}: ${model}`).join("\n")}\nUsage: /subagent-profile <name> | clear`);
+				output(ctx, `Current profile: ${active}\n${Object.entries(config.profiles).map(([n, definition]) => `${n}: ${describeProfileDefinition(definition)}`).join("\n")}\nUsage: /subagent-profile <name> | clear`);
 				return;
 			}
 			if (!Object.hasOwn(config.profiles, name)) throw new Error(`Unknown profile '${name}'. Use /subagent-profile to list profiles.`);
 			await ctx.modelRegistry.refresh();
-			const model = resolveProfileModel(config.profiles[name], ctx.modelRegistry.getAvailable());
 			const agents = discoverAgents(ctx.cwd, "user").agents;
 			if (!agents.length) throw new Error("No user agents found. Nothing changed.");
 			const current = effectivePreferences(ctx, agents).preferences;
 			const base = applyModelPreferences(agents, current, [], new Set());
-			const marker = createProfileMarker(name, model, base, ctx.modelRegistry.getAll());
+			const marker = createProfileMarker(name, config.profiles[name], base, ctx.modelRegistry.getAvailable());
 			pi.appendEntry(PROFILE_ENTRY, marker);
-			output(ctx, `Session profile: ${name}. Thinking preserved; global choices unchanged. Applies to future user-agent runs only.\n${Object.entries(marker.assignments).map(([agent, p]) => `${agent}: ${p.model} | thinking: ${p.thinking ?? "child defaults (unchanged)"}`).join("\n")}\nProject agents and already-running children are unchanged.`);
+			output(ctx, `Session profile: ${name}. Global choices unchanged. Applies to future user-agent runs only.\n${Object.entries(marker.assignments).map(([agent, p]) => `${agent}: ${p.model} | thinking: ${p.thinking ?? "child defaults"}`).join("\n")}\nProject agents and already-running children are unchanged.`);
 		} catch (error) { output(ctx, `Subagent profile: ${error instanceof Error ? error.message : String(error)}`, true); }
 	};
 	pi.registerCommand("subagent-profile", { description: "Choose a session-only subagent profile, or clear it", handler: profileCommand });

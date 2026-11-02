@@ -47,12 +47,11 @@ Source: https://google.github.io/styleguide/cppguide.html. Only rules that are v
 - Use `const` wherever a value or pointed-to data is not modified, written `const int *p` (const first).
 - Use `NULL` for pointers, `'\0'` for chars, `0` for integers. `nullptr` does not exist in C.
 
-Supplemental design advice (not Google rules), adapted to C99 from
-[How to write the perfect function](https://www.youtube.com/watch?v=2OMRWPOSw9s):
-- Make inputs and outputs explicit: pass needed values or state pointers; use return values and clearly documented output/in-out pointers. Caller-visible mutation is fine when part of the contract (11:12–11:41, 14:24–14:46).
-- Avoid hidden dependencies on mutable globals or call order. Pass a focused context when practical; document required initialization and unavoidable hardware/shared state. `static` limits linkage, not state coupling (23:43–25:55, 28:53–29:19).
-- Separate computation from I/O and register effects where practical so logic can be tested independently. Keep necessary effects at clear boundaries; respect memory/timing constraints rather than buffering every result (18:27–21:45).
-- State required invariants and establish them through checked initialization or validation. Use focused structs/opaque APIs where useful, but do not claim a C typedef or public struct enforces validity; report invalid inputs or assert internal preconditions (32:00–34:53).
+Supplemental design advice (not Google rules), adapted to C99:
+- Make inputs and outputs explicit: pass needed values or state pointers; use return values and clearly documented output/in-out pointers. Caller-visible mutation is fine when part of the contract.
+- Avoid hidden dependencies on mutable globals or call order. Pass a focused context when practical; document required initialization and unavoidable hardware/shared state. `static` limits linkage, not state coupling.
+- Separate computation from I/O and register effects where practical so logic can be tested independently. Keep necessary effects at clear boundaries; respect memory/timing constraints rather than buffering every result.
+- State required invariants and establish them through checked initialization or validation. Use focused structs/opaque APIs where useful, but do not claim a C typedef or public struct enforces validity; report invalid inputs or assert internal preconditions.
 
 ## Types
 - Use `<stdint.h>` fixed-width types (`uint32_t`, `uint8_t`) when size matters, `size_t` for sizes and counts, and `<stdbool.h>` `bool` for booleans.
