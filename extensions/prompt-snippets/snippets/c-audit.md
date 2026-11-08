@@ -1,8 +1,8 @@
 ---
-name: c-iwyu-audit
+name: Audit C code to IWYU Standards 
 description: Use when writing, reviewing, or cleaning up C code in this embedded codebase. Covers strict IWYU include audits, uart.c commentary matching led.c, and the C99-compatible subset of the Google style guide.
 placement: append
-order: 60
+order: 13
 ---
 
 # Strict IWYU audit and example-comment style

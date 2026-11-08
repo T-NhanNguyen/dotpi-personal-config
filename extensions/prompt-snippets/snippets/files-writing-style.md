@@ -1,20 +1,20 @@
 ---
-name: human-writing
-description: Rewrite prose (technical docs, READMEs, PR text, error messages, release notes, agent reports, comments — never code) into two layered writing structured, that is easy to scan and hold in your head. clean up agent or sub-agent report text, Use when asked to make writing not sound like AI, or make docs clear and consistent.
+name: Files Writing Style
+description: Rewrite prose (docs, PRs, reports, error messages, never code) so it reads clearly on the first pass. Use when asked to make writing sound less like AI.
 placement: append
-order: 10
+order: 5
 ---
 
 # human-writing
 
-Rewrite any prose into 2 layered structure, ASD-STE100 Simplified Technical English and clear, mapped out text. The bar: the reader should be able to inferred and comprehend it on first read, builds one clear mental model, and never re-reads a sentence to parse it.
+Rewrite any prose into a two-layered structure, ASD-STE100 Simplified Technical English, and clear, mapped-out text. The bar: the reader infers and comprehends it on the first read, builds one clear mental model, and never re-reads a sentence to parse it.
 
 Applies to any prose. Never code, identifiers, or command syntax. Not for marketing copy.
 
 ## Rules
 
 SENTENCES
-- Complete, plain sentences. No em-dash staccato, no rhetorical fragments, no staccato triads. that cadence forces re-reading and is a known AI tell.
+- Complete, plain sentences. No em-dash staccato, no rhetorical fragments, no staccato triads. That cadence forces re-reading and is a known AI tell.
 - The em dash is banned. Use periods and commas.
 - One idea per sentence. Short sentences — around 25 words. A longer one is fine only as a clean parallel list of concrete specifics, not stacked clauses.
 - No semicolons. Write two sentences.
@@ -31,12 +31,14 @@ WORDS
   - If a label must stay (a real test name, config flag, or trace id), gloss it once in plain words on first use, then use the short name: "the checked-handoff run (the test that proves the handoff works), here called P8." Never open with the bare label.
   - One stacked noun phrase per sentence at most. Split chains like "compiled-handoff oracle with strict ordering and retained watchdog preservation" into separate short sentences, each naming one thing that happens.
 - Short common word where it does not flatten meaning: start (not commence/initiate), use (not utilize/leverage), help (not facilitate), make sure (not ensure), before (not prior to), after (not subsequent to), about (not regarding/concerning), get (not obtain/acquire), show (not demonstrate).
+- Use time markers to point at the step that did the work. Words like already, before, after, by the time, first, and then say when one step happened relative to another. One marker in the first or second sentence moves the reader's eye to the right step and saves a paragraph of re-explaining.
 - Contractions are fine — they are how a person sounds.
 - American spelling.
 
 TONE
 - Tone down, not up. No lofty register — name the concrete thing instead of the grand claim.
 - Say the direct thing. Name it; do not gesture at it.
+- Delete the writer. Remove words that name you or the act of explaining. Cut openers that judge the question, invitations to walk through it, and offers to explain more. The reader asked about the thing, not about you.
 - State only what you know. Soften what is still open.
 - No defensive framing. Do not raise a doubt the reader did not have.
 - Keep the motive in. The reason something happened is content — never cut it for tightness.
@@ -45,6 +47,8 @@ STRUCTURE
 - One topic per paragraph, max six sentences.
 - Lead with the outcome, then the details.
 - No redundancy. Each section adds information; do not restate what the surrounding text already said.
+- Answer the gap, not the topic. Find the one missing link between what the reader already knows and what they asked. State that link. Do not restate the subject or walk every case.
+- Build on what the reader already knows. Use the names and terms they already use, and add only the missing connection. Do not re-explain what they already understand.
 - For steps: numbered vertical list, one action per item, imperative form. Condition before its command.
 - Keep terminology and cadence consistent across the text.
 
@@ -52,16 +56,3 @@ STRUCTURE
 
 - **review** — check a draft without rewriting it: flag issues, give paste-ready snippet fixes, change only what is asked about. Never rewrite wholesale.
 - **rewrite** (default when text is handed over for cleanup) — revise the full text under these rules. Keep every fact and claim exact; change only wording, cadence, and structure. Output only the revised text: no preamble, no summary, no closing remarks.
-
-## Self-lint (run before returning text)
-
-1. Any em dash? Remove it.
-2. Any fragment or staccato triad? Complete the sentence.
-3. Any adjective claiming quality? Replace with the specific detail, or cut it.
-4. Any lofty register? Replace with the concrete thing.
-5. Any defensive framing, inflated claim, or redundancy? Cut it.
-6. Any passive voice with a known actor? Make it active.
-7. Same thing named two ways? Pick one name.
-8. Any stacked auxiliaries or hedge pile-up? Say it plainly, or cut it.
-9. Any bare ID, acronym, or noun-stack label doing the explaining? Add the plain-English gloss, or rewrite as the action itself.
-10. Would a smart reader outside this project need the glossary to follow a sentence? Rewrite the sentence.

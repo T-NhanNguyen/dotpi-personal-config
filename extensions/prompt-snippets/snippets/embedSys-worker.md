@@ -1,8 +1,8 @@
 ---
-name: embedded-user-context-first
+name: Strict User's Rules For Embedded
 description: Set of rules for working with embedded target. When the user supplies pin, peripheral, or register details, work from the given details first; only consult the datasheet with permission.
 placement: append
-order: 50
+order: 10
 ---
 
 # Embedded: user-supplied details first

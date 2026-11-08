@@ -11,7 +11,9 @@
  *   append groups visually distinguished.
  * - When a message is sent, active snippet bodies are prepended/appended to
  *   the message text in order (prepend group sorted by `order` first, then
- *   the typed text, then the append group sorted by `order`).
+ *   the typed text wrapped in <user_inquiry> tags, then the append group
+ *   sorted by `order`). The fence keeps the query distinguishable from the
+ *   snippet bodies no matter which side they land on.
  * - Toggles reset to all-off after each send and at session start.
  */
 
@@ -319,9 +321,12 @@ export default function (pi: ExtensionAPI) {
 
 		const prependBodies = active.filter((s) => s.placement === "prepend").map((s) => s.body);
 		const appendBodies = active.filter((s) => s.placement === "append").map((s) => s.body);
+		// Fence the typed query so it stays distinguishable from snippet bodies,
+		// whichever side they land on. Plain messages (no snippets) are untouched.
+		const inquiry = `<user_inquiry>\n${event.text}\n</user_inquiry>`;
 		return {
 			action: "transform",
-			text: [...prependBodies, event.text, ...appendBodies].join("\n\n"),
+			text: [...prependBodies, inquiry, ...appendBodies].join("\n\n"),
 		};
 	});
 

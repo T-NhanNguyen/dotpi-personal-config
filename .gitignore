@@ -4,3 +4,4 @@ node_modules/
 .dev-vault/
 .pi/subagent-models.json
 .pi
+__pycache__/

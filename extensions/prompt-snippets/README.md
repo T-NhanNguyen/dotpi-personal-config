@@ -19,7 +19,10 @@ standalone instruction — toggle exactly the ones you want per message.
   - `↓ append: ...` (warning color) — inserted after your message
 - When you send a message, active snippet bodies are merged into the message
   text: prepend group (sorted by `order`) → your text → append group (sorted
-  by `order`), separated by blank lines.
+  by `order`), separated by blank lines. Your typed text is wrapped in
+  `<user_inquiry>` tags so the query stays visually distinct from the snippet
+  bodies sitting on either side. Messages sent with no snippets enabled are
+  left untouched.
 - Toggles reset to **all off** after each send and at session start.
 
 ## Snippet files

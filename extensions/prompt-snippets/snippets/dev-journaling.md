@@ -1,8 +1,8 @@
 ---
-name: dev-journaling
+name: Dev Journaling
 description: Establish and maintain a private development journal (Obsidian vault) inside a repo. TOC upkeep every session, markdown-only notes, and gitignore integration so the vault is never committed.
 placement: append
-order: 20
+order: 6
 ---
 
 # Dev Vault
