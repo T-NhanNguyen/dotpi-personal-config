@@ -15,6 +15,9 @@
  *   sorted by `order`). The fence keeps the query distinguishable from the
  *   snippet bodies no matter which side they land on.
  * - Toggles reset to all-off after each send and at session start.
+ * - Snippet bodies may use ${REPO_ROOT}, which expands to this package's root
+ *   directory at load time. It is derived from this file's location, so the
+ *   package works wherever `pi install` places it, with no configuration.
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
@@ -34,7 +37,22 @@ interface Snippet {
 }
 
 const extensionDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = dirname(dirname(extensionDir));
 const snippetsDir = join(extensionDir, "snippets");
+
+/**
+ * Placeholders expanded in snippet bodies at load time. REPO_ROOT points at
+ * the package root (the parent of extensions/), derived from this file's own
+ * path so installed packages resolve correctly no matter where pi puts them.
+ */
+const TOKENS: Record<string, string> = {
+	REPO_ROOT: repoRoot,
+};
+
+/** Expand ${NAME} tokens; unknown tokens are left untouched. */
+function expandTokens(text: string): string {
+	return text.replace(/\$\{(\w+)\}/g, (raw, name: string) => TOKENS[name] ?? raw);
+}
 const WIDGET_ID = "prompt-snippets";
 
 function parseSnippet(filename: string, raw: string): Snippet | null {
@@ -47,7 +65,7 @@ function parseSnippet(filename: string, raw: string): Snippet | null {
 		if (kv) meta[kv[1].toLowerCase()] = kv[2].trim().replace(/^["']|["']$/g, "");
 	}
 
-	const body = match[2].trim();
+	const body = expandTokens(match[2].trim());
 	if (!body) return null;
 
 	const parsedOrder = Number.parseInt(meta.order ?? "", 10);
