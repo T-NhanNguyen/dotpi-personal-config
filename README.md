@@ -4,10 +4,10 @@ Personal Pi coding-agent configuration packaged as an installable Pi package.
 
 ## Install
 
-Install from the local checkout:
+Install from a local checkout:
 
 ```sh
-pi install /Users/nhan/ai-workspace/dotpi-personal-config
+pi install /path/to/dotpi-personal-config
 ```
 
 Or, from inside this repository:
@@ -33,11 +33,10 @@ agent definitions.** Without this step, calls to bundled agents such as
 `explore`, `worker`, `documentation-reviewer`, or `code-auditor` fail with
 `Unknown agent` / `Available agents: none`.
 
-For this local checkout, run once:
+Run once, using the absolute path of your checkout:
 
 ```sh
-ln -s /Users/nhan/ai-workspace/dotpi-personal-config/agents \
-  /Users/nhan/.pi/agent/agents
+ln -s /path/to/dotpi-personal-config/agents ~/.pi/agent/agents
 ```
 
 The extension looks for definitions in `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/agents`.
@@ -56,11 +55,12 @@ override reference loading (see below).
 
 ## What loads
 
-All bundled extensions are auto-loaded. `extensions/prompt-snippets/` and
-`extensions/subagent/` work without extra setup. `extensions/kinetograph/` and
-`extensions/model-profiles/` are optional. Kinetograph prints a warning and
-registers nothing when its video runtime is missing. Model-profiles does
-nothing until you run `/model-profile`.
+All bundled extensions are auto-loaded, with one exception. `extensions/prompt-snippets/` and
+`extensions/subagent/` work without extra setup. `extensions/model-profiles/` does
+nothing until you run `/model-profile`. `extensions/kinetograph/` ships in the
+repository but is excluded from the package manifest
+(`!extensions/kinetograph/index.ts` in `package.json`) while the feature is
+unfinished, so installs neither load it nor install its npm dependency.
 
 ## Layout
 
@@ -126,11 +126,15 @@ their respective directories; those directories need not exist until needed.
 Press **alt+s** or run **/snippets** to open the menu and toggle prompt rules.
 Snippet files live in `extensions/prompt-snippets/snippets/`.
 
-## Kinetograph (optional)
+## Kinetograph (excluded until finished)
+
+Kinetograph is **not loaded** right now: the package manifest excludes it, and
+its npm dependency is removed, so a plain install never resolves or warns about
+it. To develop it locally, remove the `!extensions/kinetograph/index.ts`
+exclusion from `package.json` and restore the `kinetograph` dependency.
 
 Kinetograph adds video creation tools. The rest of this package works without
-it. When the extension cannot find a Kinetograph runtime, it prints a warning
-and registers nothing, so a plain install is not broken by its absence.
+it.
 
 To enable it, follow the [canonical Kinetograph setup, rebuild, and reconnect procedure](extensions/kinetograph/README.md).
 It covers Node 22+, dependency authorization, preserving the unpublished local
@@ -233,7 +237,7 @@ Example requests to Pi:
 - “Ask code-auditor to audit and correct my uncommitted implementation changes,
   including applicable C interfaces, and run relevant tests.”
 - “Ask code-auditor to review, fix, and verify my uncommitted changes using the
-  authoritative package root `/Users/nhan/ai-workspace/dotpi-personal-config`.”
+  authoritative package root `/path/to/dotpi-personal-config`.”
 
 ## Development loop
 
