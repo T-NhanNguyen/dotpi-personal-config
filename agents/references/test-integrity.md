@@ -46,6 +46,7 @@ Changed assertion semantics or newly exposed risks still require adjudication.
 ## Coverage ledger
 
 List covered behaviors, intentionally uncovered behaviors with reasons, and untestable-by-construction items.
+Name the dimensions each assertion collapses — multiplicity, ordering, and cadence — and never claim a collapsed dimension as covered.
 Never count uncovered items as passing; correct claims for properties the tests cannot observe.
 Name mocked collaborators, disabled integrations, and quarantined tests; subtract these exclusions from claimed coverage.
 Do not claim integration coverage from an isolated dependency test.
@@ -126,3 +127,14 @@ A failing result is a claim from a tool, not a verdict on the product. Validate 
 - **Fixture and environment limits:** Treat aggregate storage as part of the test contract. Individually scoped fixtures can still aggregate into one instrumented frame; sanitizer instrumentation, stack/heap limits, and launch hooks can produce failures unrelated to the product. Declare these assumptions, and do not relabel an environment failure as a product bug or a proven hard limit.
 - **Evidence preservation:** Keep the original raw failure and its classification. Mark untrustworthy results `invalid` with the reason instead of deleting or rewriting them; never convert a historical failure into a pass because the oracle changed. After a repair, require a fresh run on the affected target; unchanged passing results elsewhere do not substitute.
 - **Remove superseded workarounds:** Delete obsolete launch hooks and harness workarounds rather than retaining unverified ones that can mask failures.
+
+## Observation surface
+
+An assertion observes only what its comparison preserves. Name the dimensions an oracle collapses, and treat each collapsed dimension as uncovered rather than passing.
+
+- **Multiplicity.** Set and dict-keyed comparisons absorb duplicates silently. Where duplicate emission is plausible, assert counts or compare a multiset; membership cannot distinguish one record from five.
+- **Ordering.** Unordered comparison cannot detect reordering. Where order is part of the contract, assert the exact sequence with intermediate observations rather than sorted or set-valued equality.
+- **Cadence.** Content equality cannot observe inter-arrival time, jitter, batching, or deadline adherence; a burst delivered in one window and a steady stream are identical to a content oracle. Assert at-speed behavior from a recorded timestamp series, or declare the check integrity-limited.
+- **Recovery paths.** A generator that can only emit valid input leaves rejection and resync logic unexercised, and that logic is usually the most intricate in the component. Require injected malformed, truncated, interleaved, and boundary-split input, and assert the post-recovery state rather than the absence of a crash.
+- **Unreachable-branch audit.** Before accepting a suite, ask which branch the generator can never reach. Unreachable branches are uncovered by construction, not covered because the suite is green.
+- **Harness self-harm.** A harness that does not drain its own channel can manufacture the losses it reports. Confirm the harness cannot produce the failure it attributes to the product before accepting that finding.
