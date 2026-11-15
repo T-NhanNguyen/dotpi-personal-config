@@ -197,6 +197,26 @@ try {
   const found = text(await call(query, { action: 'search', query: 'finding' }));
   checked('search finds matching records', () => assert.match(found, /demo\/f1/));
 
+  const review = await call(append, { ...base, kind: 'review', title: 'Human sign-off', agent: 'human', supports: ['f1'] });
+  const outlineWithReview = text(await call(query, { action: 'outline', trace: 'demo' }));
+  checked('review records get r-prefixed ids and appear in outline by default', () => {
+    assert.match(text(review), /r1/);
+    assert.match(outlineWithReview, /r1 \[review\] Human sign-off/);
+  });
+  const provWithReview = text(await call(mermaid, { trace: 'demo', diagram: 'provenance' }));
+  checked('review records are edges in provenance diagrams', () => {
+    assert.match(provWithReview, /f1 --> r1/);
+    assert.match(provWithReview, /r1\{\{"r1: review/);
+  });
+  const sessionCtx = { cwd: temporary, sessionManager: { getSessionId: () => 'session-abc' } };
+  const stamped = await append.execute('test', { ...base, title: 'Stamped' }, undefined, undefined, sessionCtx);
+  checked('append stamps the session id when the host provides one', () => {
+    assert.equal(stamped.details.record.session, 'session-abc');
+  });
+  checked('append omits the session field when the host has no session manager', () => {
+    assert.equal(first.details.record.session, undefined);
+  });
+
   const list = text(await call(query, { action: 'list' }));
   checked('list shows the trace root', () => assert.match(list, /demo/));
 

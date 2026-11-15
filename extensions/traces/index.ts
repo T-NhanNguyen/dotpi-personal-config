@@ -2,7 +2,8 @@
  * Trace Tool - durable reasoning records for subagents.
  *
  * Subagents append compact records (finding, decision, concept, path,
- * evidence, deadend) with source refs. The orchestrator reads them back in
+ * evidence, deadend) with source refs. Humans append review records through
+ * the trace viewer. The orchestrator reads them back in
  * layers so it can teach the user without loading the full report.
  *
  * Storage: .dev-vault/traces/<trace-id>/trace.jsonl (append-only JSONL).
@@ -10,132 +11,33 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import {
+	CONFIDENCE,
+	type Kind,
+	MAX_BODY,
+	MAX_TITLE,
+	KINDS,
+	ensureTrace,
+	groupPatterns,
+	nextRecordId,
+	normalizeFailureClass,
+	normalizeTraceId,
+	readRecords,
+	traceNames,
+	traceRoot,
+	visible,
+	type TraceRecord,
+	type TraceRef,
+	type TraceStep,
+} from "./core.js";
 
-const TRACE_ROOT = path.join(".dev-vault", "traces");
-const MAX_BODY = 1200;
-const MAX_TITLE = 200;
-const KINDS = ["finding", "decision", "concept", "path", "evidence", "deadend"] as const;
 const ACTIONS = ["list", "outline", "get", "evidence", "search", "patterns", "export"] as const;
-const CONFIDENCE = ["verified", "inferred", "unverified"] as const;
 
-type Kind = (typeof KINDS)[number];
 type Action = (typeof ACTIONS)[number];
-
-interface TraceRef {
-	type: string;
-	path?: string;
-	lines?: string;
-	page?: string;
-	note?: string;
-}
-
-interface TraceStep {
-	action: string;
-	ref: string;
-}
-
-interface TraceCheck {
-	method: string;
-	output: string;
-	revision?: string;
-}
-
-interface TraceRecord {
-	id: string;
-	trace: string;
-	kind: Kind;
-	title: string;
-	body: string;
-	refs: TraceRef[];
-	supports?: string[];
-	confidence?: string;
-	check?: TraceCheck;
-	steps?: TraceStep[];
-	agent?: string;
-	failureClass?: string;
-	ts: string;
-}
-
-const ID_PREFIX: Record<Kind, string> = {
-	finding: "f",
-	decision: "d",
-	concept: "c",
-	path: "p",
-	evidence: "e",
-	deadend: "x",
-};
-
-function traceRoot(ctxCwd: string): string {
-	return path.join(ctxCwd, TRACE_ROOT);
-}
-
-function normalizeTraceId(raw: string): string {
-	const id = raw.trim().toLowerCase();
-	if (!/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
-		throw new Error("Trace id must be a lowercase slug: letters, digits, dot, underscore, hyphen; no slashes.");
-	}
-	return id;
-}
-
-function normalizeFailureClass(raw: string): string {
-	const failureClass = raw.trim().toLowerCase();
-	if (!/^[a-z0-9][a-z0-9._-]*$/.test(failureClass)) {
-		throw new Error("Failure class must be a lowercase slug: letters, digits, dot, underscore, hyphen; no spaces or slashes.");
-	}
-	return failureClass;
-}
-
-function readRecords(file: string): TraceRecord[] {
-	if (!fs.existsSync(file)) return [];
-	const text = fs.readFileSync(file, "utf8");
-	const lines = text
-		.split("\n")
-		.map((line, index) => ({ line: line.trim(), index }))
-		.filter((entry) => entry.line.length > 0);
-	const records: TraceRecord[] = [];
-	for (let i = 0; i < lines.length; i++) {
-		try {
-			records.push(JSON.parse(lines[i].line) as TraceRecord);
-		} catch {
-			// Tolerate a partially written trailing record, but never hide corruption mid-file.
-			if (i === lines.length - 1) break;
-			throw new Error(`Malformed trace record at line ${lines[i].index + 1} of ${file}`);
-		}
-	}
-	return records;
-}
-
-function nextRecordId(kind: Kind, records: TraceRecord[]): string {
-	const prefix = ID_PREFIX[kind];
-	const used = new Set(records.map((record) => record.id));
-	let n = 1;
-	while (used.has(`${prefix}${n}`)) n += 1;
-	return `${prefix}${n}`;
-}
-
-function ensureTrace(dir: string, trace: string): void {
-	fs.mkdirSync(dir, { recursive: true });
-	const metaFile = path.join(dir, "meta.json");
-	if (!fs.existsSync(metaFile)) {
-		fs.writeFileSync(
-			metaFile,
-			`${JSON.stringify({ trace, created: new Date().toISOString() }, null, 2)}\n`,
-			{ encoding: "utf8" },
-		);
-	}
-}
-
-function traceNames(root: string): string[] {
-	if (!fs.existsSync(root)) return [];
-	return fs
-		.readdirSync(root, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory())
-		.map((entry) => entry.name)
-		.sort();
-}
 
 function formatRefs(refs: TraceRef[]): string {
 	return refs
@@ -146,10 +48,6 @@ function formatRefs(refs: TraceRef[]): string {
 			return location ? `- ${ref.type}: ${location}` : `- ${ref.type}`;
 		})
 		.join("\n");
-}
-
-function visible(record: TraceRecord, includeDeadends: boolean): boolean {
-	return includeDeadends || record.kind !== "deadend";
 }
 
 function filterRecords(
@@ -265,6 +163,8 @@ function mermaidNode(record: TraceRecord): string {
 			return `${id}[["${label}"]]`;
 		case "deadend":
 			return `${id}(["${label}"])`;
+		case "review":
+			return `${id}{{"${label}"}}`;
 		default:
 			return `${id}["${label}"]`;
 	}
@@ -272,7 +172,7 @@ function mermaidNode(record: TraceRecord): string {
 
 function buildProvenance(records: TraceRecord[], direction: string): string {
 	const lines = [`flowchart ${direction}`];
-	const kinds: Kind[] = ["finding", "decision", "concept", "path", "evidence", "deadend"];
+	const kinds: Kind[] = [...KINDS];
 	for (const kind of kinds) {
 		const group = records.filter((record) => record.kind === kind);
 		if (group.length === 0) continue;
@@ -374,6 +274,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Append only records that would let a reader present the work or answer technical questions about it. If a record would not survive that bar, do not append it. Skip mundane steps such as pwd, directory listings, or merely opening a file.",
 			"One record per established conclusion, not per action. Use finding for a conclusion, decision for a choice and its rejected alternative, concept only when the reader will need the definition, path for the ordered narrowing steps, evidence for a source excerpt, and deadend only with a concrete refuting ref.",
+			"The review kind is reserved for human reviewers using the trace viewer; agents never append review records.",
 			"Use the trace id the orchestrator supplies; do not invent a new one. Every record needs a real ref, and the body stays under 1200 characters.",
 			"After appending, include trace: <id> in your final handoff with a 3 to 6 bullet summary. Do not dump trace contents into the report.",
 		],
@@ -395,6 +296,7 @@ export default function (pi: ExtensionAPI) {
 
 			const dir = path.join(traceRoot(ctx.cwd), trace);
 			const file = path.join(dir, "trace.jsonl");
+			const sessionId = (ctx as { sessionManager?: { getSessionId?: () => string } }).sessionManager?.getSessionId?.();
 			let record: TraceRecord | undefined;
 			await withFileMutationQueue(file, async () => {
 				ensureTrace(dir, trace);
@@ -414,6 +316,7 @@ export default function (pi: ExtensionAPI) {
 					...(params.steps ? { steps: params.steps } : {}),
 					...(params.agent ? { agent: params.agent } : {}),
 					...(failureClass ? { failureClass } : {}),
+					...(sessionId ? { session: sessionId } : {}),
 					ts: new Date().toISOString(),
 				};
 				await fs.promises.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
@@ -485,21 +388,7 @@ export default function (pi: ExtensionAPI) {
 
 			if (params.action === "patterns") {
 				const names = params.trace ? [normalizeTraceId(params.trace)] : traceNames(root);
-				const groups = new Map<string, { records: { trace: string; record: TraceRecord }[]; traces: Set<string>; agents: Set<string> }>();
-				for (const name of names) {
-					for (const record of readRecords(path.join(root, name, "trace.jsonl"))) {
-						if (!record.failureClass || !visible(record, includeDeadends)) continue;
-						if (params.kind && record.kind !== params.kind) continue;
-						const group = groups.get(record.failureClass) ?? { records: [], traces: new Set<string>(), agents: new Set<string>() };
-						group.records.push({ trace: name, record });
-						group.traces.add(name);
-						if (record.agent) group.agents.add(record.agent);
-						groups.set(record.failureClass, group);
-					}
-				}
-				const patterns = [...groups.entries()]
-					.map(([failureClass, group]) => ({ failureClass, ...group }))
-					.sort((a, b) => b.records.length - a.records.length || b.traces.size - a.traces.size || a.failureClass.localeCompare(b.failureClass));
+				const patterns = groupPatterns(root, names, { kind: params.kind, includeDeadends });
 				const page = patterns.slice(offset, offset + limit);
 				const lines = page.flatMap((pattern) => [
 					`${pattern.failureClass} | records=${pattern.records.length} traces=${pattern.traces.size} agents=${pattern.agents.size}`,
@@ -632,6 +521,73 @@ export default function (pi: ExtensionAPI) {
 				content: [{ type: "text" as const, text }],
 				details: { trace, diagram, records: visibleRecords.length, saved },
 			};
+		},
+	});
+
+	pi.registerCommand("trace-view", {
+		description: "Open the interactive trace viewer: /trace-view [trace-id | stop]",
+		handler: async (args, ctx) => {
+			const pidFile = path.join(traceRoot(ctx.cwd), ".viewer.pid");
+			const notify = (text: string, error = false) => {
+				if (ctx.hasUI) ctx.ui.notify(text, error ? "error" : "info");
+				else if (error) console.error(text);
+				else console.log(text);
+			};
+			if (args?.trim() === "stop") {
+				if (!fs.existsSync(pidFile)) {
+					notify("No trace viewer is running for this vault.");
+					return;
+				}
+				const pid = Number(fs.readFileSync(pidFile, "utf8"));
+				try {
+					// The server was spawned detached, so it leads its own process group.
+					process.kill(-pid);
+				} catch {
+					try { process.kill(pid); } catch { /* already gone */ }
+				}
+				fs.rmSync(pidFile, { force: true });
+				try {
+					process.kill(pid, 0);
+					notify(`Trace viewer (pid ${pid}) did not stop.`, true);
+				} catch {
+					notify(`Stopped trace viewer (pid ${pid}).`);
+				}
+				return;
+			}
+			const viewerDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..", "trace-viewer");
+			const server = path.join(viewerDir, "server.ts");
+			const bundle = path.join(viewerDir, "dist", "index.html");
+			const tsx = path.join(viewerDir, "node_modules", ".bin", "tsx");
+			if (!fs.existsSync(server) || !fs.existsSync(bundle) || !fs.existsSync(tsx)) {
+				notify("Trace viewer is not built. Run: cd trace-viewer && npm install && npm run build", true);
+				return;
+			}
+			const trace = args?.trim() ? normalizeTraceId(args) : "";
+			const spawnArgs = [server, "--cwd", ctx.cwd, "--port", "4777", ...(trace ? ["--trace", trace] : [])];
+			const child = spawn(tsx, spawnArgs, { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+			const url = await new Promise<string>((resolve, reject) => {
+				let buffer = "";
+				const timer = setTimeout(() => reject(new Error("Viewer server did not report a URL within 10 seconds.")), 10_000);
+				child.stdout!.on("data", (chunk) => {
+					buffer += String(chunk);
+					const line = buffer.split("\n").find((entry) => entry.startsWith("http"));
+					if (line) {
+						clearTimeout(timer);
+						resolve(line.trim());
+					}
+				});
+				child.on("error", reject);
+				child.on("exit", (code) => reject(new Error(`Viewer server exited early with code ${code}.`)));
+			}).catch((error: unknown) => {
+				child.kill();
+				throw error;
+			});
+			child.unref();
+			child.stdout!.destroy();
+			child.stderr!.destroy();
+			fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+			fs.writeFileSync(pidFile, String(child.pid), "utf8");
+			notify(`Trace viewer running at ${url} (pid ${child.pid}; stop with /trace-view stop).`);
 		},
 	});
 }
