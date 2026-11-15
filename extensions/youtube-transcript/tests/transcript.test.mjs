@@ -67,6 +67,22 @@ try {
     assert(text.includes("## 00:00:00 Intro"));
     assert.equal(text.match(/Hello & welcome\./g).length, 2);
   });
+  await check("cues group into five-minute blocks", () => {
+    const cues = [
+      { start: 0, end: 4, text: "First." },
+      { start: 299.9, end: 301, text: "Edge." },
+      { start: 301, end: 305, text: "Next block." },
+      { start: 610, end: 615, text: "Later." },
+    ];
+    const text = renderTranscript("Title", url, cues, []);
+    assert(text.includes("### 00:00:00 - 00:05:00"));
+    assert(text.includes("### 00:05:00 - 00:10:00"));
+    assert(text.includes("### 00:10:00 - 00:15:00"));
+    assert.equal(text.match(/### /g).length, 3);
+    assert(!text.includes("[00:00:00]"));
+    const edge = text.indexOf("Edge."), next = text.indexOf("Next block.");
+    assert(text.indexOf("### 00:00:00 - 00:05:00") < edge && edge < text.indexOf("### 00:05:00 - 00:10:00") && text.indexOf("### 00:05:00 - 00:10:00") < next);
+  });
   await check("extractor creates full artifacts with native-only and no-media flags", async () => {
     const fake = fixture();
     const result = await fetchTranscript(fake.exec, { url });

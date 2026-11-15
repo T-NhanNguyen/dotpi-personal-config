@@ -106,6 +106,94 @@ try {
     assert.doesNotMatch(evidence, /The body\./);
   });
 
+  const classified = await call(append, {
+    ...base,
+    title: 'Demo cannot resolve the test host',
+    agent: 'explore',
+    failureClass: 'missing-test-host',
+  });
+  checked('append persists the failure class', () => {
+    assert.equal(classified.details.record.failureClass, 'missing-test-host');
+    const file = path.join(temporary, '.dev-vault/traces/demo/trace.jsonl');
+    const records = fs.readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(records.at(-1).failureClass, 'missing-test-host');
+  });
+
+  await call(append, {
+    ...base,
+    trace: 'other',
+    title: 'Other cannot resolve the test host',
+    agent: 'worker',
+    failureClass: 'missing-test-host',
+  });
+  await call(append, {
+    ...base,
+    trace: 'other',
+    title: 'A separate failure',
+    agent: 'worker',
+    failureClass: 'stale-fixture',
+  });
+  const patterns = await call(query, { action: 'patterns' });
+  checked('patterns aggregates failure classes across traces', () => {
+    assert.equal(patterns.details.total, 2);
+    const repeated = patterns.details.patterns[0];
+    assert.equal(repeated.failureClass, 'missing-test-host');
+    assert.equal(repeated.count, 2);
+    assert.equal(repeated.traceCount, 2);
+    assert.deepEqual(repeated.agents, ['explore', 'worker']);
+    assert.deepEqual(repeated.records.map((record) => `${record.trace}/${record.id}`), ['demo/f3', 'other/f1']);
+    assert.match(text(patterns), /missing-test-host \| records=2 traces=2 agents=2/);
+  });
+  const demoPatterns = await call(query, { action: 'patterns', trace: 'demo' });
+  checked('patterns can restrict aggregation to one trace', () => {
+    assert.equal(demoPatterns.details.total, 1);
+    assert.equal(demoPatterns.details.patterns[0].count, 1);
+    assert.equal(demoPatterns.details.patterns[0].records[0].trace, 'demo');
+  });
+  await assert.rejects(() => call(append, { ...base, failureClass: 'not a slug' }), /Failure class/);
+  checked('rejects an invalid failure class', () => {});
+
+  await call(append, { ...base, trace: 'other', kind: 'deadend', title: 'Dead end with class', failureClass: 'flaky-harness' });
+  const visiblePatterns = await call(query, { action: 'patterns' });
+  checked('patterns excludes deadends by default', () => {
+    assert.equal(visiblePatterns.details.total, 2);
+    assert.ok(visiblePatterns.details.patterns.every((pattern) => pattern.failureClass !== 'flaky-harness'));
+  });
+  const deadendPatterns = await call(query, { action: 'patterns', kind: 'deadend', includeDeadends: true });
+  checked('patterns respects kind and includeDeadends', () => {
+    assert.equal(deadendPatterns.details.total, 1);
+    assert.equal(deadendPatterns.details.patterns[0].failureClass, 'flaky-harness');
+    assert.equal(deadendPatterns.details.patterns[0].count, 1);
+  });
+  const pagedPatterns = await call(query, { action: 'patterns', limit: 1, offset: 1 });
+  checked('patterns paginates classes with limit and offset', () => {
+    assert.equal(pagedPatterns.details.total, 2);
+    assert.equal(pagedPatterns.details.patterns.length, 1);
+    assert.equal(pagedPatterns.details.patterns[0].failureClass, 'stale-fixture');
+  });
+  const emptyPatterns = await call(query, { action: 'patterns', trace: 'demo', kind: 'decision' });
+  checked('patterns reports the empty state', () => {
+    assert.equal(emptyPatterns.details.total, 0);
+    assert.match(text(emptyPatterns), /No failure classes found\./);
+  });
+
+  const unnormalized = await call(append, {
+    ...base,
+    title: 'Demo host unresolved again',
+    agent: 'explore',
+    failureClass: '  Missing-Test-Host  ',
+  });
+  const mergedPatterns = await call(query, { action: 'patterns' });
+  checked('patterns normalizes classes and counts records separately from traces', () => {
+    assert.equal(unnormalized.details.record.failureClass, 'missing-test-host');
+    const merged = mergedPatterns.details.patterns[0];
+    assert.equal(merged.failureClass, 'missing-test-host');
+    assert.equal(merged.count, 3);
+    assert.equal(merged.traceCount, 2);
+    assert.deepEqual(merged.agents, ['explore', 'worker']);
+    assert.deepEqual(merged.records.map((record) => `${record.trace}/${record.id}`), ['demo/f3', 'demo/f4', 'other/f1']);
+  });
+
   const found = text(await call(query, { action: 'search', query: 'finding' }));
   checked('search finds matching records', () => assert.match(found, /demo\/f1/));
 

@@ -5,3 +5,4 @@ node_modules/
 .pi/subagent-models.json
 .pi
 __pycache__/
+harness-improvement-plan/

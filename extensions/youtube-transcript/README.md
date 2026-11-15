@@ -56,7 +56,7 @@ Every invocation uses its own temporary directory and returns absolute paths:
 | --- | --- |
 | `source.<language>.srt` | Original native SRT, unchanged |
 | `source.info.json` | yt-dlp metadata, including chapters when available |
-| `transcript.md` | Readable transcript with cue-start timestamps and chapter headings |
+| `transcript.md` | Readable transcript grouped into five-minute blocks with chapter headings |
 | `transcript.json` | Title, URL, duration, language, automatic flag, chapters and `{start, end, text}` cues |
 
 All structured timestamps are seconds. Adjacent SRT cues can overlap in time;

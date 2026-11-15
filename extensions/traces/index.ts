@@ -18,7 +18,7 @@ const TRACE_ROOT = path.join(".dev-vault", "traces");
 const MAX_BODY = 1200;
 const MAX_TITLE = 200;
 const KINDS = ["finding", "decision", "concept", "path", "evidence", "deadend"] as const;
-const ACTIONS = ["list", "outline", "get", "evidence", "search", "export"] as const;
+const ACTIONS = ["list", "outline", "get", "evidence", "search", "patterns", "export"] as const;
 const CONFIDENCE = ["verified", "inferred", "unverified"] as const;
 
 type Kind = (typeof KINDS)[number];
@@ -55,6 +55,7 @@ interface TraceRecord {
 	check?: TraceCheck;
 	steps?: TraceStep[];
 	agent?: string;
+	failureClass?: string;
 	ts: string;
 }
 
@@ -77,6 +78,14 @@ function normalizeTraceId(raw: string): string {
 		throw new Error("Trace id must be a lowercase slug: letters, digits, dot, underscore, hyphen; no slashes.");
 	}
 	return id;
+}
+
+function normalizeFailureClass(raw: string): string {
+	const failureClass = raw.trim().toLowerCase();
+	if (!/^[a-z0-9][a-z0-9._-]*$/.test(failureClass)) {
+		throw new Error("Failure class must be a lowercase slug: letters, digits, dot, underscore, hyphen; no spaces or slashes.");
+	}
+	return failureClass;
 }
 
 function readRecords(file: string): TraceRecord[] {
@@ -168,7 +177,7 @@ function selectRecords(
 function searchHaystack(record: TraceRecord): string {
 	const refsText = record.refs.map((ref) => `${ref.path ?? ""}\n${ref.note ?? ""}`).join("\n");
 	const stepsText = (record.steps ?? []).map((step) => `${step.action}\n${step.ref}`).join("\n");
-	return `${record.title}\n${record.body}\n${refsText}\n${stepsText}`.toLowerCase();
+	return `${record.title}\n${record.body}\n${record.failureClass ?? ""}\n${refsText}\n${stepsText}`.toLowerCase();
 }
 
 const RefParams = Type.Object({
@@ -208,11 +217,14 @@ const AppendParams = Type.Object({
 		Type.Array(StepParams, { description: "Ordered narrowing procedure for kind=path." }),
 	),
 	agent: Type.Optional(Type.String({ description: "Agent name that produced the record." })),
+	failureClass: Type.Optional(
+		Type.String({ description: "Stable lowercase slug for a failure pattern, e.g. missing-test-host. Used by trace_query action=patterns." }),
+	),
 });
 
 const QueryParams = Type.Object({
-	action: StringEnum(ACTIONS, { description: "list, outline, get, evidence, or search." }),
-	trace: Type.Optional(Type.String({ description: "Trace id. Required for outline, get, evidence." })),
+	action: StringEnum(ACTIONS, { description: "list, outline, get, evidence, search, patterns, or export." }),
+	trace: Type.Optional(Type.String({ description: "Trace id. Required for outline, get, evidence, export. Optional for search and patterns." })),
 	ids: Type.Optional(Type.Array(Type.String(), { description: "Restrict to these record ids." })),
 	kind: Type.Optional(StringEnum(KINDS, { description: "Restrict to one record kind." })),
 	query: Type.Optional(Type.String({ description: "Substring for action=search." })),
@@ -370,6 +382,7 @@ export default function (pi: ExtensionAPI) {
 			const trace = normalizeTraceId(params.trace);
 			const title = params.title.trim();
 			const body = params.body.trim();
+			const failureClass = params.failureClass === undefined ? undefined : normalizeFailureClass(params.failureClass);
 			if (!title) throw new Error("Title must not be empty.");
 			if (title.length > MAX_TITLE) throw new Error(`Title must be ${MAX_TITLE} characters or fewer.`);
 			if (!body) throw new Error("Body must not be empty.");
@@ -400,6 +413,7 @@ export default function (pi: ExtensionAPI) {
 					...(params.check ? { check: params.check } : {}),
 					...(params.steps ? { steps: params.steps } : {}),
 					...(params.agent ? { agent: params.agent } : {}),
+					...(failureClass ? { failureClass } : {}),
 					ts: new Date().toISOString(),
 				};
 				await fs.promises.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
@@ -423,6 +437,7 @@ export default function (pi: ExtensionAPI) {
 			"Choose the trace id before delegating and pass it in the task. The trace exists once the first record is appended.",
 			"Use trace_query before writing a teaching answer so the detail comes from records rather than a long report. Read in layers: outline, then get the ids or kinds you need, then evidence for citations.",
 			"Default reads exclude deadend records. Set includeDeadends only when a prior negative result matters.",
+			"Use action=patterns to group records by failureClass across traces. Repeated classes point to process defects; one-off classes may need no process change.",
 		],
 		parameters: QueryParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -466,6 +481,49 @@ export default function (pi: ExtensionAPI) {
 				const page = matches.slice(offset, offset + limit);
 				const text = total === 0 ? "No matches." : page.join("\n");
 				return { content: [{ type: "text" as const, text }], details: { action: params.action, matches } };
+			}
+
+			if (params.action === "patterns") {
+				const names = params.trace ? [normalizeTraceId(params.trace)] : traceNames(root);
+				const groups = new Map<string, { records: { trace: string; record: TraceRecord }[]; traces: Set<string>; agents: Set<string> }>();
+				for (const name of names) {
+					for (const record of readRecords(path.join(root, name, "trace.jsonl"))) {
+						if (!record.failureClass || !visible(record, includeDeadends)) continue;
+						if (params.kind && record.kind !== params.kind) continue;
+						const group = groups.get(record.failureClass) ?? { records: [], traces: new Set<string>(), agents: new Set<string>() };
+						group.records.push({ trace: name, record });
+						group.traces.add(name);
+						if (record.agent) group.agents.add(record.agent);
+						groups.set(record.failureClass, group);
+					}
+				}
+				const patterns = [...groups.entries()]
+					.map(([failureClass, group]) => ({ failureClass, ...group }))
+					.sort((a, b) => b.records.length - a.records.length || b.traces.size - a.traces.size || a.failureClass.localeCompare(b.failureClass));
+				const page = patterns.slice(offset, offset + limit);
+				const lines = page.flatMap((pattern) => [
+					`${pattern.failureClass} | records=${pattern.records.length} traces=${pattern.traces.size} agents=${pattern.agents.size}`,
+					...pattern.records.map(({ trace, record }) => `  ${trace}/${record.id} [${record.kind}] ${record.title}`),
+				]);
+				const text = patterns.length === 0
+					? "No failure classes found."
+					: [`patterns | classes=${patterns.length} shown=${page.length} offset=${offset} limit=${limit}`, ...lines].join("\n");
+				return {
+					content: [{ type: "text" as const, text }],
+					details: {
+						action: params.action,
+						total: patterns.length,
+						offset,
+						limit,
+						patterns: page.map((pattern) => ({
+							failureClass: pattern.failureClass,
+							count: pattern.records.length,
+							traceCount: pattern.traces.size,
+							agents: [...pattern.agents].sort(),
+							records: pattern.records.map(({ trace, record }) => ({ trace, id: record.id, kind: record.kind, title: record.title })),
+						})),
+					},
+				};
 			}
 
 			if (params.action === "export") {
@@ -520,8 +578,9 @@ export default function (pi: ExtensionAPI) {
 						: "";
 					const supports = record.supports?.length ? `\nSupports: ${record.supports.join(", ")}` : "";
 					const confidence = record.confidence ? `\nConfidence: ${record.confidence}` : "";
+					const failureClass = record.failureClass ? `\nFailure class: ${record.failureClass}` : "";
 					const check = record.check ? `\nCheck: ${record.check.method} | ${record.check.output}${record.check.revision ? ` @ ${record.check.revision}` : ""}` : "";
-					return `### ${record.id} [${record.kind}] ${record.title}\n${record.body}${steps}${supports}${confidence}${check}\n\nRefs:\n${formatRefs(record.refs)}`;
+					return `### ${record.id} [${record.kind}] ${record.title}\n${record.body}${steps}${supports}${confidence}${failureClass}${check}\n\nRefs:\n${formatRefs(record.refs)}`;
 				})
 				.join("\n\n");
 			return {
