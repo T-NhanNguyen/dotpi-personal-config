@@ -302,6 +302,12 @@ body {
 	min-height: 0;
 }
 
+/* Side handles are anchors for review branch edges only; hide the dots. */
+.record-node .react-flow__handle-left,
+.record-node .react-flow__handle-right {
+	opacity: 0;
+}
+
 .record-node {
 	background: var(--panel);
 	border: 1px solid var(--panel-border);

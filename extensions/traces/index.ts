@@ -546,11 +546,29 @@ export default function (pi: ExtensionAPI) {
 					try { process.kill(pid); } catch { /* already gone */ }
 				}
 				fs.rmSync(pidFile, { force: true });
-				try {
-					process.kill(pid, 0);
-					notify(`Trace viewer (pid ${pid}) did not stop.`, true);
-				} catch {
+				// SIGTERM delivery is asynchronous: the process is still alive for a
+				// few ms after the signal, so a single liveness check reports a false
+				// failure. Poll instead, then escalate to SIGKILL.
+				const exited = async (): Promise<boolean> => {
+					for (let waited = 0; waited < 1000; waited += 50) {
+						try {
+							process.kill(pid, 0);
+						} catch {
+							return true;
+						}
+						await new Promise((resolve) => setTimeout(resolve, 50));
+					}
+					return false;
+				};
+				if (await exited()) {
 					notify(`Stopped trace viewer (pid ${pid}).`);
+					return;
+				}
+				try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ }
+				if (await exited()) {
+					notify(`Stopped trace viewer (pid ${pid}) with SIGKILL.`);
+				} else {
+					notify(`Trace viewer (pid ${pid}) did not stop.`, true);
 				}
 				return;
 			}
