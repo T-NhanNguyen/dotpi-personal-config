@@ -74,6 +74,86 @@ test('real pointer/keyboard menus, bounded viewport, readable graph and exact ed
  // activate native controls such as summary; keyDown alone only tests handlers.
  const key=async key=>{const windowsVirtualKeyCode={Enter:13,Escape:27,End:35,Home:36,ArrowDown:40}[key];await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode,...(key==='Enter'?{text:'\r',unmodifiedText:'\r'}:{})});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode});};
  const navigate=async trace=>{await cdp('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/?trace=${trace}`});await wait(`document.querySelectorAll('.node').length===${datasets[trace].length} && !!document.querySelector('#filterButton')`);};
+ // Count the application's real observer callbacks without changing delivery or rendering.
+ const observerHook=await cdp('Page.addScriptToEvaluateOnNewDocument',{source:`
+  window.graphResizeCallbacks=0;
+  const NativeResizeObserver=window.ResizeObserver;
+  window.ResizeObserver=class extends NativeResizeObserver {
+   constructor(callback){super((entries,observer)=>{if(entries.some(entry=>entry.target.id==='graph'))window.graphResizeCallbacks++;callback(entries,observer);});}
+  };
+ `});
+ await t.test('sustained idle, trusted pan and orientation preserve bounded graph state',async()=>{
+  const snapshot=()=>evaluate(`(()=>{
+   const q=s=>document.querySelector(s),rect=s=>{const r=q(s).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
+   const graph=q('#graph'),svg=q('#graphSvg'),matrix=svg.querySelector('g').transform.baseVal.getItem(0).matrix;
+   return {graph:rect('#graph'),svg:rect('#graphSvg'),area:rect('.visual-area'),column:rect('.visual-column'),container:rect('.explorer-body'),playback:rect('.playback'),progress:rect('.progress-track'),viewBox:svg.getAttribute('viewBox'),transform:svg.querySelector('g').getAttribute('transform'),callbacks:window.graphResizeCallbacks,selected:q('.node.selected').dataset.id,zoom:q('#zoomValue').textContent,pan:[matrix.e-graph.clientWidth/2,matrix.f-(94+(graph.clientHeight-128)/2)]};
+  })()`);
+  const settle=async label=>{
+   // A bounded settling window is followed by an independent sustained check;
+   // repeated growth cannot be hidden by waiting for a single delayed snapshot.
+   let previous=await snapshot();
+   for(let i=0;i<12;i++){
+    await sleep(100);const current=await snapshot();
+    if(JSON.stringify(current)===JSON.stringify(previous))return current;
+    previous=current;
+   }
+   assert.fail(label+' never settled: '+JSON.stringify(previous));
+  };
+  const stable=async label=>{
+   const before=await settle(label);
+   assert(before.graph.width>0&&before.graph.height>0,label+' nonzero graph');
+   for(const name of ['graph','svg','area','playback','progress']){
+    const r=before[name],c=before.column;
+    assert(r.x>=c.x-1&&r.y>=c.y-1&&r.x+r.width<=c.x+c.width+1&&r.y+r.height<=c.y+c.height+1,label+' bounded '+name);
+   }
+   for(let i=0;i<6;i++){await sleep(100);assert.deepEqual(await snapshot(),before,label+' unchanged through '+((i+1)*100)+'ms (including observer callbacks)');}
+   t.diagnostic(label+': '+JSON.stringify(before));
+   return before;
+  };
+  const logical=state=>({selected:state.selected,zoom:state.zoom,pan:state.pan});
+  const drag=async(kind,dy)=>{
+   await evaluate(`document.querySelector('#graph').scrollIntoView({block:'center'});window.panPointerTrusted=null;document.querySelector('#graph').addEventListener('pointerdown',event=>{window.panPointerTrusted=event.isTrusted;},{once:true});`);
+   const p=await evaluate(`(()=>{const r=document.querySelector('#graph').getBoundingClientRect();for(let y=Math.max(1,r.top+70);y<Math.min(innerHeight-70,r.bottom-70);y+=20){for(let x=r.left+3;x<r.right;x+=20){const hit=document.elementFromPoint(x,y);if(hit?.closest('#graph')&&!hit.closest('.node')&&!hit.closest('button'))return {x,y};}}throw Error('No visible graph background');})()`);
+   const before=await settle(kind+' before drag');
+   if(kind==='touch'){
+    await cdp('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...p,id:1}]});
+    await cdp('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:p.x,y:p.y+dy,id:1}]});
+    await cdp('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+   }else{
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',...p});
+    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...p,button:'left',clickCount:1});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseMoved',x:p.x,y:p.y+dy,button:'left',buttons:1});
+    await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y+dy,button:'left',clickCount:1});
+   }
+   assert.equal(await evaluate('window.panPointerTrusted'),true,kind+' uses trusted input');
+   const after=await stable(kind+' drag '+dy);
+   assert.equal(after.selected,before.selected);assert.equal(after.zoom,before.zoom);
+   assert(Math.abs(after.pan[0]-before.pan[0])<.01,kind+' preserves horizontal pan');
+   assert(Math.abs(after.pan[1]-before.pan[1]-dy)<.1,kind+' logical vertical pan follows pointer');
+   return after;
+  };
+  for(const [width,height] of [[390,844],[430,932],[800,1280],[1063,1400],[1512,758]]){
+   await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<=680});
+   await navigate('special');await evaluate('document.fonts.ready');
+   const initial=await stable(width+'x'+height);
+   if(width<=680)assert.equal(initial.column.height,464,'mobile keeps fixed visual column height');
+   await drag('mouse',32);await drag('mouse',-32);
+  }
+  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  await navigate('special');await evaluate('document.fonts.ready');await settle('portrait');
+  await click('[data-step="x1"]');await click('#zoomIn');
+  await cdp('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+  await drag('touch',32);const portrait=await drag('touch',-20);
+  await cdp('Emulation.setTouchEmulationEnabled',{enabled:false});
+  for(const [width,height] of [[844,390],[390,844]]){
+   await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});
+   const resized=await stable('orientation '+width+'x'+height);
+   const expected=logical(portrait),actual=logical(resized);
+   assert.equal(actual.selected,expected.selected);assert.equal(actual.zoom,expected.zoom);
+   actual.pan.forEach((value,i)=>assert(Math.abs(value-expected.pan[i])<.01,'orientation preserves logical pan, not screen center'));
+  }
+ });
+ await cdp('Page.removeScriptToEvaluateOnNewDocument',{identifier:observerHook.identifier});
  // Focused layout-only regressions: fixture patterns, long path, and an unsaved draft.
  await cdp('Emulation.setDeviceMetricsOverride',{width:1063,height:777,deviceScaleFactor:1,mobile:false});
  await cdp('Page.navigate',{url:`http://127.0.0.1:${server.address().port}/?trace=special&vault=${encodeURIComponent(longVault)}`});
@@ -150,11 +230,11 @@ test('real pointer/keyboard menus, bounded viewport, readable graph and exact ed
    assert.equal(await evaluate(`(()=>{const l=document.querySelector('#traceList'),extra=[...l.children].slice(2);extra.forEach(e=>e.remove());const height=l.clientHeight;extra.forEach(e=>l.append(e));return height;})()`),150,'two traces use only two rows, without blank space');
    const check=await evaluate(`(()=>{const q=s=>document.querySelector(s),r=e=>e.getBoundingClientRect();return {gap:r(q('.visual-column')).bottom-r(q('.playback')).bottom,row:r(q('.explorer-body')).height,details:r(q('#details')).height,font:12*Number(q('#zoomValue').textContent.replace('%',''))/100,selected:r(q('.node.selected .node-card')).toJSON(),graph:r(q('#graph')).toJSON(),pairs:[...document.querySelectorAll('.support-edge')].map(e=>[e.dataset.source,e.dataset.target]),sequence:document.querySelectorAll('.sequence-edge').length};})()`);
    assert(Math.abs(check.gap)<2);assert(Math.abs(check.row-check.details)<2);assert(check.font>=11);
-   assert(await evaluate(`[...document.querySelectorAll('#detailContent .section-label')].some(e=>e.textContent==='SOURCE REFERENCES')`),'record source references remain accessible');
+   assert(await evaluate(`['SOURCE REFERENCES','VERIFICATION CHECK'].every(label=>!document.querySelector('#detailContent').textContent.includes(label))`),'source references and verification checks are absent even with populated record fields');
    assert(await evaluate(`![...document.querySelectorAll('#detailContent .section-label')].some(e=>e.textContent==='SUPPORTS')`),'support connections use navigable controls rather than a duplicate raw block');
    if(trace==='special'){
     assert(await evaluate(`document.querySelector('#details').scrollHeight>document.querySelector('#details').clientHeight`),'long evidence scrolls inside details');
-    assert(await evaluate(`['VERIFICATION CHECK','ORDERED STEPS','SUPPORT CONNECTIONS'].every(label=>document.querySelector('#detailContent').textContent.includes(label))`));
+    assert(await evaluate(`['ORDERED STEPS','SUPPORT CONNECTIONS'].every(label=>document.querySelector('#detailContent').textContent.includes(label))`));
     await click('.connection[data-select="x1"]');
     assert.equal(await evaluate(`document.querySelector('.node.selected').dataset.id`),'x1');
     await click('[data-tab="review"]');

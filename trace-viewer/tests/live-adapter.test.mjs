@@ -136,7 +136,7 @@ test('live boot scopes all trace requests, hydrates detail and escapes record HT
  assert(get('filter').innerHTML.includes('deadend'));
 });
 
-test('record details render every source reference field as escaped text', async () => {
+test('record details omit source references and verification checks even when populated', async () => {
  const api = backend();
  const refs = [
   {type:'file',path:'src/source.ts',lines:'12-18',note:'source <script>unsafe</script>'},
@@ -146,13 +146,14 @@ test('record details render every source reference field as escaped text', async
  const get = mount(async (url, init) => {
   const response = await api.fetch(url, init);
   if (!new URL(url, 'http://localhost').pathname.includes('/record/')) return response;
-  return {...response,json:async()=>({...await response.json(),refs})};
+  return {...response,json:async()=>({...await response.json(),refs,check:{method:'read',output:'Hidden check output'}})};
  });
  await settle();
  const html = get('detailContent').innerHTML;
- assert(html.includes('SOURCE REFERENCES'));
- for (const ref of refs) for (const value of Object.values(ref)) assert(html.includes(helpers.esc(value)), value);
- assert(!html.includes('<script>unsafe</script>'));
+ assert(!html.includes('SOURCE REFERENCES'));
+ assert(!html.includes('VERIFICATION CHECK'));
+ for (const ref of refs) for (const value of Object.values(ref)) assert(!html.includes(helpers.esc(value)), value);
+ assert(!html.includes('Hidden check output'));
 });
 
 test('session tab uses real roles, timestamps and escaped transcript text', async () => {

@@ -97,7 +97,7 @@
  .explorer-body{height:clamp(410px,calc(100dvh - 280px),660px)}
  footer{margin-top:10px}
 }
-@media(max-width:680px){.explorer-body{height:auto;overflow:visible}.visual-column{height:464px}.explorer-body>.details{height:340px}.toolbar-right{flex-wrap:wrap}}
+@media(max-width:680px){.explorer-body{height:auto;overflow:visible}.visual-column{display:flex;height:464px}.explorer-body>.details{height:340px}.toolbar-right{flex-wrap:wrap}}
 
 /* The rail remains reachable; hiding content never rebuilds the viewer. */
 .sidebar-content{display:flex;flex-direction:column;min-width:0}
