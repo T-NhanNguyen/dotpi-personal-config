@@ -15,7 +15,7 @@
 			"extensions/*/index.ts",
 			"!extensions/kinetograph/index.ts"
 		],
-		"skills": []
+		"skills": ["skills"]
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-agent-core": "*",

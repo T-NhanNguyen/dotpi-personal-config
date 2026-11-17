@@ -52,6 +52,7 @@ const MIME_TYPES: Record<string, string> = {
 	".ico": "image/x-icon",
 	".map": "application/json; charset=utf-8",
 	".woff2": "font/woff2",
+	".ttf": "font/ttf",
 };
 
 class HttpError extends Error {

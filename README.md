@@ -111,15 +111,25 @@ dotpi-personal-config/
 | `prompts/*.md` | Prompt template |
 | `themes/*.json` | Theme |
 
-Pi supports conventional resource discovery. This package's `pi.extensions`
-manifest uses `extensions/*/index.ts`, so new extension directories with an
-`index.ts` entry point are picked up without editing `package.json`. All
-extensions in this repository are intentional and included; the manifest has
-no extension exclusions.
+Pi supports conventional resource discovery when there is no `pi` manifest.
+This package uses an explicit manifest: `pi.extensions` includes
+`extensions/*/index.ts` and excludes `extensions/kinetograph/index.ts`, so new
+extension directories with an `index.ts` entry point are picked up unless
+excluded. `pi.skills` explicitly includes `skills`, loading the skill directories
+under `skills/` (currently `caveman`, `code-review`, `grill-with-docs`, and `handoff`). Prompts
+and themes must be declared in the manifest when added; their conventional
+paths above are not automatically loaded by this explicit manifest.
 The Kinetograph extension dynamically loads its selected runtime's matching skill
-(local fork preferred; installed dependency fallback). `pi.skills` is intentionally
-empty to avoid advertising two Kinetograph versions. Prompts and themes are discovered conventionally when added to
-their respective directories; those directories need not exist until needed.
+(local fork preferred; installed dependency fallback) when enabled.
+Run `/reload` in an active Pi session to refresh resources, then use
+`/skill:caveman`, `/skill:code-review`, `/skill:grill-with-docs`, or
+`/skill:handoff` to load a skill explicitly.
+
+`grill-with-docs` requires separately installed `grilling` and `domain-modeling`
+skills. This package does not bundle those prerequisites. Install both into your
+Pi skill resources and run `/reload` before using `/skill:grill-with-docs`.
+If either prerequisite is unavailable, the workflow stops and names the missing
+skill rather than attempting to run without it.
 
 ## prompt-snippets
 

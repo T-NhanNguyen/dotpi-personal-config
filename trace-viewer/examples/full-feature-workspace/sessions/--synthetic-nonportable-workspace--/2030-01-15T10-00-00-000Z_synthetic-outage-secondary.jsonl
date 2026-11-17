@@ -1,0 +1,7 @@
+{"type":"session","version":3,"id":"synthetic-outage-secondary","timestamp":"2030-01-15T10:00:00.000Z","cwd":"/synthetic/nonportable/workspace"}
+{"type":"message","id":"system","parentId":null,"timestamp":"2030-01-15T10:00:00.000Z","message":{"role":"system","content":"SYNTHETIC SYSTEM: omitted from timeline."}}
+{"type":"message","id":"u1","parentId":"system","timestamp":"2030-01-15T10:01:00.000Z","message":{"role":"user","content":"SYNTHETIC USER: investigate only the fictional outage."}}
+{"type":"message","id":"abandoned","parentId":"u1","timestamp":"2030-01-15T10:59:00.000Z","message":{"role":"assistant","content":"SYNTHETIC ABANDONED BRANCH: should not appear."}}
+{"type":"message","id":"a1","parentId":"u1","timestamp":"2030-01-15T10:02:00.000Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"SYNTHETIC reasoning: compare the two modeled queues."},{"type":"text","text":"SYNTHETIC α → β: inspect the fake renewal queue."},{"type":"toolCall","id":"call1","name":"synthetic_replay","arguments":{"mode":"fake-clock"}}]}}
+{"type":"message","id":"t1","parentId":"a1","timestamp":"2030-01-15T10:03:00.000Z","message":{"role":"toolResult","content":[{"type":"toolResult","content":[{"type":"text","text":"SYNTHETIC replay: expired=12"}]}]}}
+{"type":"message","id":"a2","parentId":"t1","timestamp":"2030-01-15T10:04:00.000Z","message":{"role":"assistant","content":"SYNTHETIC conclusion: the longer branch wins, not the newest short leaf.\nNo real service was contacted."}}

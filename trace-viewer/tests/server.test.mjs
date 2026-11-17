@@ -6,7 +6,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -17,6 +17,9 @@ import { readRecords } from '../../extensions/traces/core.ts';
 const viewer = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const serverFile = path.join(viewer, 'server.ts');
 const tsx = path.join(viewer, 'node_modules', '.bin', 'tsx');
+// Exercise real built assets even on a fresh checkout, without a pretest hook
+// so standalone execution has the same contract as node --test.
+execFileSync(process.execPath, [path.join(viewer, 'build.mjs')], { cwd: viewer });
 const fixtureCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-viewer-cwd-'));
 const secondCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-viewer-second-'));
 const sessionsDir = path.join(fixtureCwd, 'sessions');
@@ -136,6 +139,23 @@ try {
 	});
 
 	const base = `http://localhost:${server.port}`;
+
+	await checked('static app and local fonts are served intact with correct MIME types', async () => {
+		for (const [asset, mime] of [
+			['index.html', 'text/html; charset=utf-8'],
+			['app.js', 'text/javascript; charset=utf-8'],
+			['organic-layout.js', 'text/javascript; charset=utf-8'],
+			['style.css', 'text/css; charset=utf-8'],
+			['fonts/dm-sans.ttf', 'font/ttf'],
+			['fonts/space-grotesk.ttf', 'font/ttf'],
+		]) {
+			const response = await fetch(`${base}/${asset}`);
+			assert.equal(response.status, 200, asset);
+			assert.equal(response.headers.get('content-type'), mime, asset);
+			assert.deepEqual(Buffer.from(await response.arrayBuffer()),
+				fs.readFileSync(path.join(viewer, 'public', asset)), asset);
+		}
+	});
 
 	await checked('/api/traces lists the fixture traces with counts', async () => {
 		const { status, body } = await getJson(`${base}/api/traces`);
