@@ -10,6 +10,7 @@ const required = [
 	'index.html',
 	'app.js',
 	'organic-layout.js',
+	'panel-toggle.js',
 	'select-menu.js',
 	'style.css',
 	'fonts/dm-sans.ttf',

@@ -1,11 +1,12 @@
 /**
- * Shared pure trace logic. No pi imports: the traces extension and the
+ * Shared trace logic and review append API. No pi imports: the traces extension and the
  * trace-viewer server both consume this module so read semantics, slug
  * validation, and pattern aggregation cannot drift between writer and viewer.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { withTraceLock, readStrict, reserveId, appendRecord } from "./mutation.ts";
 
 export const TRACE_ROOT = path.join(".dev-vault", "traces");
 export const MAX_BODY = 1200;
@@ -182,7 +183,7 @@ export function groupPatterns(
 
 /**
  * Append a review record authored by a human reviewer. Uses the same
- * validation and id allocation as the extension; callers serialize writes.
+ * validation and durable id allocation as the extension, under a filesystem lock.
  */
 export function appendReview(
 	root: string,
@@ -199,12 +200,14 @@ export function appendReview(
 	const failureClass = input.failureClass === undefined ? undefined : normalizeFailureClass(input.failureClass);
 	const dir = path.join(root, name);
 	const file = path.join(dir, "trace.jsonl");
+	return withTraceLock(file, () => {
 	ensureTrace(dir, name);
-	const records = readRecords(file);
+	const { raw, entries } = readStrict(file);
+	const records = entries.flatMap(e => e.record ? [e.record] : []);
 	const missing = input.targetIds.filter((id) => !records.some((candidate) => candidate.id === id));
 	if (missing.length > 0) throw new Error(`Unknown review target ids: ${missing.join(", ")}.`);
 	const record: TraceRecord = {
-		id: nextRecordId("review", records),
+		id: reserveId(file, "review", records),
 		trace: name,
 		kind: "review",
 		title,
@@ -215,6 +218,7 @@ export function appendReview(
 		agent: input.agent ?? "human",
 		ts: new Date().toISOString(),
 	};
-	fs.appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8");
+	appendRecord(file, record, raw);
 	return record;
+	});
 }

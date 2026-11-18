@@ -116,7 +116,8 @@ This package uses an explicit manifest: `pi.extensions` includes
 `extensions/*/index.ts` and excludes `extensions/kinetograph/index.ts`, so new
 extension directories with an `index.ts` entry point are picked up unless
 excluded. `pi.skills` explicitly includes `skills`, loading the skill directories
-under `skills/` (currently `caveman`, `code-review`, `grill-with-docs`, and `handoff`). Prompts
+under `skills/` (currently `caveman`, `code-review`, `domain-modeling`, `grilling`,
+`grill-with-docs`, and `handoff`). Prompts
 and themes must be declared in the manifest when added; their conventional
 paths above are not automatically loaded by this explicit manifest.
 The Kinetograph extension dynamically loads its selected runtime's matching skill
@@ -125,11 +126,17 @@ Run `/reload` in an active Pi session to refresh resources, then use
 `/skill:caveman`, `/skill:code-review`, `/skill:grill-with-docs`, or
 `/skill:handoff` to load a skill explicitly.
 
-`grill-with-docs` requires separately installed `grilling` and `domain-modeling`
-skills. This package does not bundle those prerequisites. Install both into your
-Pi skill resources and run `/reload` before using `/skill:grill-with-docs`.
+`grill-with-docs` uses the bundled `grilling` and `domain-modeling` skills.
+Run `/reload` after updating the package so the current session discovers both.
 If either prerequisite is unavailable, the workflow stops and names the missing
 skill rather than attempting to run without it.
+
+These two skills are copied unchanged from
+[RyderAsKing/dotfiles](https://github.com/RyderAsKing/dotfiles/tree/5de2d16d869a57aa23e04543168b3b417be372b3/agents/.agents/skills)
+at commit `5de2d16d869a57aa23e04543168b3b417be372b3`, including their supporting
+formats and agent metadata. The upstream MIT notice is preserved in
+`skills/LICENSE-mattpocock-skills`. The temporary upstream checkout is kept in
+`tmp/dotfiles` and excluded from git.
 
 ## prompt-snippets
 

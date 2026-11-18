@@ -31,6 +31,9 @@ import {
 	type TraceRecord,
 } from "../extensions/traces/core.ts";
 
+import { deleteReviews } from "./review-deletion.ts";
+import type { ReviewSelection } from "../extensions/traces/review-deletion.ts";
+
 const VIEWER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = path.join(VIEWER_DIR, "dist");
 const DEFAULT_PORT = 4777;
@@ -483,6 +486,14 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, pathna
 }
 
 async function handleRequest(options: Options, state: VaultState, enqueue: (task: () => unknown) => Promise<unknown>, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+	// Local binding alone does not prevent hostile-site requests or DNS rebinding.
+	const port = (req.socket.address() as {port?:number}).port;
+	const trusted = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
+	if (!trusted.has(req.headers.host ?? "")) throw new HttpError(403, "Untrusted Host.");
+	if (req.method !== "GET" && req.method !== "HEAD") {
+		if (req.headers.origin !== undefined && ![...trusted].some(host => req.headers.origin === `http://${host}`)) throw new HttpError(403, "Untrusted Origin.");
+		if (req.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") throw new HttpError(415, "Mutations require application/json.");
+	}
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const segments = url.pathname.split("/").filter(Boolean);
 
@@ -578,6 +589,16 @@ async function handleRequest(options: Options, state: VaultState, enqueue: (task
 			return;
 		}
 
+		if (req.method === "POST" && segments[3] === "review-deletions" && ["preview", "commit"].includes(segments[4]) && segments.length === 5) {
+			if (!fs.existsSync(path.join(dir, "trace.jsonl"))) throw new HttpError(404, "Unknown trace.");
+			let input: {selection?:unknown; authorization?:unknown};
+			try { input = JSON.parse(await readBody(req)); } catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(400, "Invalid JSON."); }
+			if (!input || !Array.isArray(input.selection) || !input.selection.length || input.selection.some(s => !s || typeof s.id !== "string" || !s.snapshot || s.snapshot.id !== s.id || s.snapshot.kind !== "review" || typeof s.snapshot.title !== "string" || typeof s.snapshot.body !== "string") || new Set(input.selection.map(s => s.id)).size !== input.selection.length) throw new HttpError(400, "selection must contain unique review ids and prior snapshots.");
+			if (segments[4] === "commit" && typeof input.authorization !== "string") throw new HttpError(400, "Commit requires preview authorization.");
+			const result = await enqueue(() => deleteReviews(root, trace, input.selection as ReviewSelection[], segments[4] === "commit" ? input.authorization as string : undefined)) as ReturnType<typeof deleteReviews>;
+			sendJson(res, result.status, result.body); return;
+		}
+
 		if (isWrite && segments.length === 4) {
 			const raw = await readBody(req);
 			let body: unknown;
@@ -645,7 +666,7 @@ export function startServer(options: Options): Promise<{ port: number; close: ()
 				if (error.code === "EADDRINUSE" && remaining > 0) attempt(port + 1, remaining - 1);
 				else reject(error);
 			});
-			server.listen(port, () => {
+			server.listen(port, "127.0.0.1", () => {
 				const address = server.address();
 				resolve({ port: typeof address === "object" && address ? address.port : port, close });
 			});
@@ -659,7 +680,8 @@ if (isMain) {
 	try {
 		const options = parseArgs(process.argv.slice(2));
 		const { port } = await startServer(options);
-		console.log(`http://localhost:${port}/${options.trace ? `?trace=${encodeURIComponent(options.trace)}` : ""}`);
+		// Match the IPv4 bind address: localhost may resolve to an older IPv6 listener.
+		console.log(`http://127.0.0.1:${port}/${options.trace ? `?trace=${encodeURIComponent(options.trace)}` : ""}`);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : error);
 		process.exit(1);

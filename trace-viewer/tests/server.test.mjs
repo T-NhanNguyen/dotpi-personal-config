@@ -135,10 +135,10 @@ let server;
 try {
 	server = await startServer(['--port', '0', '--trace', 'alpha']);
 	await checked('server prints an http URL line with the --trace query', () => {
-		assert.match(server.url, /^http:\/\/localhost:\d+\/\?trace=alpha$/);
+		assert.match(server.url, /^http:\/\/127\.0\.0\.1:\d+\/\?trace=alpha$/);
 	});
 
-	const base = `http://localhost:${server.port}`;
+	const base = new URL(server.url).origin;
 
 	await checked('static app and local fonts are served intact with correct MIME types', async () => {
 		for (const [asset, mime] of [
@@ -356,23 +356,28 @@ try {
 
 	await checked('EADDRINUSE increments the port until one is free', async () => {
 		const blocker = net.createServer();
-		await new Promise((resolve) => blocker.listen(0, resolve));
+		// Match the production IPv4 loopback bind so the port really collides.
+		await new Promise((resolve) => blocker.listen(0, '127.0.0.1', resolve));
 		const blocked = blocker.address().port;
-		const retry = await startServer(['--port', String(blocked)]);
-		assert.equal(retry.port, blocked + 1);
-		retry.child.kill();
-		blocker.close();
+		let retry;
+		try {
+			retry = await startServer(['--port', String(blocked)]);
+			assert.equal(retry.port, blocked + 1);
+		} finally {
+			retry?.child.kill();
+			blocker.close();
+		}
 	});
 
 	await checked('a restarted server reloads the persisted vault list', async () => {
 		const restarted = await startServer(['--port', '0']);
-		const { status, body } = await getJson(`http://localhost:${restarted.port}/api/vaults`);
+		const { status, body } = await getJson(`http://127.0.0.1:${restarted.port}/api/vaults`);
 		assert.equal(status, 200);
 		assert.equal(body.length, 2);
 		const second = body.find((entry) => entry.path === path.resolve(secondCwd));
 		assert.ok(second);
 		assert.equal(second.default, false);
-		const delta = await getJson(`http://localhost:${restarted.port}/api/traces?vault=${encodeURIComponent(path.resolve(secondCwd))}`);
+		const delta = await getJson(`http://127.0.0.1:${restarted.port}/api/traces?vault=${encodeURIComponent(path.resolve(secondCwd))}`);
 		assert.deepEqual(delta.body.map((entry) => entry.trace), ['delta']);
 		restarted.child.kill();
 	});

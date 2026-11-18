@@ -6,7 +6,7 @@
  * the trace viewer. The orchestrator reads them back in
  * layers so it can teach the user without loading the full report.
  *
- * Storage: .dev-vault/traces/<trace-id>/trace.jsonl (append-only JSONL).
+ * Storage: .dev-vault/traces/<trace-id>/trace.jsonl (locked appends; viewer may delete reviews).
  */
 
 import * as fs from "node:fs";
@@ -23,7 +23,6 @@ import {
 	KINDS,
 	ensureTrace,
 	groupPatterns,
-	nextRecordId,
 	normalizeFailureClass,
 	normalizeTraceId,
 	readRecords,
@@ -34,6 +33,8 @@ import {
 	type TraceRef,
 	type TraceStep,
 } from "./core.js";
+
+import { withTraceLock, readStrict, reserveId, appendRecord } from "./mutation.ts";
 
 const ACTIONS = ["list", "outline", "get", "evidence", "search", "patterns", "export"] as const;
 
@@ -127,7 +128,7 @@ const QueryParams = Type.Object({
 	kind: Type.Optional(StringEnum(KINDS, { description: "Restrict to one record kind." })),
 	query: Type.Optional(Type.String({ description: "Substring for action=search." })),
 	includeDeadends: Type.Optional(
-		Type.Boolean({ description: "Include deadend records. Default false.", default: false }),
+		Type.Boolean({ description: "Include deadend records in outline, get, evidence, search, and patterns. Default true. Set false to exclude them, even by ID." }),
 	),
 	limit: Type.Optional(Type.Number({ description: "Max records returned. Default 50.", default: 50 })),
 	offset: Type.Optional(Type.Number({ description: "Skip first N matching records. Default 0.", default: 0 })),
@@ -298,13 +299,14 @@ export default function (pi: ExtensionAPI) {
 			const file = path.join(dir, "trace.jsonl");
 			const sessionId = (ctx as { sessionManager?: { getSessionId?: () => string } }).sessionManager?.getSessionId?.();
 			let record: TraceRecord | undefined;
-			await withFileMutationQueue(file, async () => {
+			withTraceLock(file, () => {
 				ensureTrace(dir, trace);
-				const records = readRecords(file);
+				const { raw, entries } = readStrict(file);
+				const records = entries.flatMap(e => e.record ? [e.record] : []);
 				const missing = (params.supports ?? []).filter((id) => !records.some((candidate) => candidate.id === id));
 				if (missing.length > 0) throw new Error(`Unknown supports ids: ${missing.join(", ")}. Append the source records first.`);
 				record = {
-					id: nextRecordId(params.kind, records),
+					id: reserveId(file, params.kind, records),
 					trace,
 					kind: params.kind,
 					title,
@@ -319,7 +321,7 @@ export default function (pi: ExtensionAPI) {
 					...(sessionId ? { session: sessionId } : {}),
 					ts: new Date().toISOString(),
 				};
-				await fs.promises.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
+				appendRecord(file, record, raw);
 			});
 			const appended = record as TraceRecord;
 			return {
@@ -339,7 +341,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Choose the trace id before delegating and pass it in the task. The trace exists once the first record is appended.",
 			"Use trace_query before writing a teaching answer so the detail comes from records rather than a long report. Read in layers: outline, then get the ids or kinds you need, then evidence for citations.",
-			"Default reads exclude deadend records. Set includeDeadends only when a prior negative result matters.",
+			"Queries include deadend records by default. Treat them as rejected paths, not established findings. Set includeDeadends to false to exclude them, even by ID.",
 			"Use action=patterns to group records by failureClass across traces. Repeated classes point to process defects; one-off classes may need no process change.",
 		],
 		parameters: QueryParams,
@@ -347,7 +349,7 @@ export default function (pi: ExtensionAPI) {
 			const root = traceRoot(ctx.cwd);
 			const limit = Math.max(1, Math.min(params.limit ?? 50, 200));
 			const offset = Math.max(0, Math.floor(params.offset ?? 0));
-			const includeDeadends = params.includeDeadends ?? false;
+			const includeDeadends = params.includeDeadends ?? true;
 
 			if (params.action === "list") {
 				const names = traceNames(root);

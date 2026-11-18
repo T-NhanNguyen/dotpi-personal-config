@@ -30,8 +30,12 @@ test('real pointer/keyboard menus, bounded viewport, readable graph and exact ed
  let emptyVaults=false;
  const server=createServer(async(req,res)=>{
   try {
-   if(req.method!=='GET'){res.statusCode=405;res.end('Read-only isolated fixture');return;}
    const url=new URL(req.url,'http://localhost'); let value;
+   // Simulate a stale server serving new assets but lacking the read-only preview API.
+   if(req.method==='POST' && url.pathname.endsWith('/review-deletions/preview')){
+    res.statusCode=404;res.setHeader('content-type','application/json');res.end(JSON.stringify({error:'not found'}));return;
+   }
+   if(req.method!=='GET'){res.statusCode=405;res.end('Read-only isolated fixture');return;}
    requests.push(url.pathname+url.search);
    if(url.pathname==='/api/vaults')value=emptyVaults?[]:[{path:'/loaded',name:'Loaded',traceCount:choices.length,default:true},{path:'/other',name:'Other',traceCount:choices.length,default:false},{path:longVault,name:'Long vault',traceCount:choices.length,default:false}];
    else if(url.pathname==='/api/vaults/known')value=[{path:'/discovered',name:'Discovered',loaded:false}];
@@ -183,18 +187,37 @@ test('real pointer/keyboard menus, bounded viewport, readable graph and exact ed
  const beforeSidebar=await sidebarState(),beforeRequests=requests.length;
  const redraw=()=>evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
  await click('#sidebarToggle');await redraw();
- assert(await evaluate(`document.querySelector('#sidebarContent').hidden && document.querySelector('#sidebarToggle').getAttribute('aria-expanded')==='false' && document.querySelector('#sidebarToggle').getAttribute('aria-label')==='Expand sidebar' && document.querySelector('#sidebarToggle').getAttribute('aria-controls')==='sidebarContent' && document.querySelector('.session-sidebar').getBoundingClientRect().width===48 && document.querySelector('.app').getBoundingClientRect().left===48`));
+ assert(await evaluate(`document.querySelector('#sidebarContent').hidden && document.querySelector('#sidebarToggle').getAttribute('aria-expanded')==='false' && document.querySelector('#sidebarToggle').getAttribute('aria-label')==='Expand sidebar' && document.querySelector('#sidebarToggle').getAttribute('aria-controls')==='sidebarContent' && document.querySelector('.session-sidebar').getBoundingClientRect().width===0 && document.querySelector('.app').getBoundingClientRect().left===0`));
  assert.deepEqual(await sidebarState(),beforeSidebar);
  await key('Enter');await redraw();
  assert.equal(await evaluate(`document.querySelector('#sidebarToggle').getAttribute('aria-label')`),'Collapse sidebar');
  assert.deepEqual(await sidebarState(),beforeSidebar);
  assert.equal(requests.length,beforeRequests,'toggles never reload the trace');
+ assert(await evaluate(`document.querySelector('#patternsPanel > summary').textContent==='RECORD TAGS' && document.querySelector('.tag-help').textContent.includes('reviews and other records') && document.querySelector('#patternList').textContent.includes('3 records') && document.querySelector('#reviewForm').textContent.includes('Tag (optional)')`),'tags explain grouping without calling every record a failure');
+ const detailsWidth=await evaluate(`document.querySelector('#graph').clientWidth`);
+ await click('#detailsToggle');await redraw();
+ assert(await evaluate(`document.querySelector('#details').hidden && document.querySelector('#detailsToggle').getAttribute('aria-expanded')==='false' && document.querySelector('#detailsToggle').textContent.trim()===document.querySelector('#prev').textContent.trim() && document.querySelector('#detailsPanel').getBoundingClientRect().width===0`));
+ assert(await evaluate(`document.querySelector('#graph').clientWidth>${detailsWidth}`),'collapsing details gives its width to the graph');
+ assert.deepEqual(await sidebarState(),beforeSidebar,'details collapse preserves draft, filters and logical viewport');
+ await click('#timelineTab');
+ assert(await evaluate(`document.querySelector('#details').hidden`),'view switching retains panel state');
+ await click('#detailsToggle');await redraw();
+ assert(await evaluate(`!document.querySelector('#details').hidden && document.querySelector('#detailsToggle').textContent.trim()===document.querySelector('#next').textContent.trim()`));
+ await click('#graphTab');await redraw();
+ assert.deepEqual(await sidebarState(),beforeSidebar);
+ assert.equal(requests.length,beforeRequests,'both panel toggles and mode switches are layout-only');
  for(const width of [1512,1063,800,390,320]){
   await cdp('Emulation.setDeviceMetricsOverride',{width,height:777,deviceScaleFactor:1,mobile:width<681});await redraw();
   assert(await evaluate(`(()=>{const p=document.querySelector('#vaultLocation'),b=document.querySelector('#copyVaultPath'),r=p.getBoundingClientRect(),s=b.getBoundingClientRect(),row=p.parentElement.getBoundingClientRect(),side=document.querySelector('.session-sidebar').getBoundingClientRect();return p.textContent===p.title && getComputedStyle(p).textOverflow==='ellipsis' && p.scrollWidth>p.clientWidth && Math.abs((r.top+r.height/2)-(s.top+s.height/2))<2 && r.left>=side.left && s.right<=side.right && row.right<=side.right && document.documentElement.scrollWidth<=innerWidth;})()`),'path and copy icon stay in one bounded row at '+width);
+  assert(await evaluate(`(()=>{const q=s=>document.querySelector(s),size=e=>{const r=e.getBoundingClientRect();return [r.width,r.height].join(',');};return ['#sidebarToggle','#detailsToggle'].every(s=>size(q(s))===size(q('#fullscreen')));})()`),'both tabs match fullscreen dimensions at '+width);
   await click('#sidebarToggle');await redraw();
-  assert(await evaluate(`document.querySelector('#sidebarToggle').getBoundingClientRect().right<=innerWidth && document.documentElement.scrollWidth<=innerWidth`),'mobile rail remains accessible and bounded');
+  assert(await evaluate(`(()=>{const q=s=>document.querySelector(s),button=q('#sidebarToggle').getBoundingClientRect(),title=q('#traceTitle').getBoundingClientRect();return q('.session-sidebar').getBoundingClientRect().width===0 && q('.app').getBoundingClientRect().left===0 && parseFloat(getComputedStyle(q('.session-sidebar')).borderRightWidth)===0 && button.right<=innerWidth && (button.right<=title.left || button.bottom<=title.top) && document.documentElement.scrollWidth<=innerWidth && q('#sidebarToggle').textContent.trim()===q('#next').textContent.trim();})()`),'zero-width sidebar leaves only the accessible tab at '+width);
   await key('Enter');await redraw();
+  assert(await evaluate(`(()=>{const button=document.querySelector('#sidebarToggle').getBoundingClientRect(),side=document.querySelector('.session-sidebar').getBoundingClientRect();return innerWidth<=680 || Math.abs(button.left-side.right)<=1;})()`),'sidebar toggle is an attached outer edge tab');
+  await click('#detailsToggle');await redraw();
+  assert(await evaluate(`document.querySelector('#details').hidden && document.querySelector('#detailsToggle').getBoundingClientRect().width>0 && document.documentElement.scrollWidth<=innerWidth`),'detail tab stays reachable and bounded at '+width);
+  await key('Enter');await redraw();
+  assert(await evaluate(`!document.querySelector('#details').hidden && document.querySelector('#detailsToggle').getAttribute('aria-controls')==='details'`));
  }
  // Trusted click invokes the clipboard; controlled mocks isolate permission outcomes.
  await evaluate(`window.copiedPaths=[];Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async path=>{window.copiedPaths.push(path)}}})`);
@@ -357,4 +380,9 @@ test('real pointer/keyboard menus, bounded viewport, readable graph and exact ed
  await click('#vaultSelectButton');await key('Home');await key('Enter');
  await wait(`new URL(location.href).searchParams.get('vault')==='/loaded' && document.querySelectorAll('.node').length===${sample.length}`);
  assert.equal(await evaluate(`document.querySelector('#vaultSelect').value`),'/loaded');
+ await navigate('replies');await click('[data-step="r1"]');await click('#stageReviewDeletion');
+ await click('#previewDeletions');
+ await wait(`document.querySelector('#toast').textContent.includes('Reopen with /trace-view')`);
+ assert(await evaluate(`document.querySelector('#toast').textContent.includes('Nothing has been deleted') && document.querySelector('.node[data-id="r1"]').dataset.staged==='true' && !document.querySelector('#previewDeletions').disabled && !document.querySelector('dialog')`),'missing preview API gives recovery guidance without losing staged selection');
+ await click('#cancelDeletions');
 });

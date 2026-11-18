@@ -86,13 +86,16 @@ try {
   });
 
   const outline = text(await call(query, { action: 'outline', trace: 'demo' }));
-  checked('outline excludes deadends by default', () => {
+  checked('outline includes deadends by default', () => {
     assert.match(outline, /f1/);
     assert.match(outline, /d1/);
-    assert.doesNotMatch(outline, /A dead end/);
+    assert.match(outline, /A dead end/);
   });
-  const outlineAll = text(await call(query, { action: 'outline', trace: 'demo', includeDeadends: true }));
-  checked('outline includes deadends on request', () => assert.match(outlineAll, /A dead end/));
+  const outlineWithoutDeadends = text(await call(query, { action: 'outline', trace: 'demo', includeDeadends: false }));
+  checked('outline can exclude deadends without hiding findings', () => {
+    assert.match(outlineWithoutDeadends, /f1/);
+    assert.doesNotMatch(outlineWithoutDeadends, /A dead end/);
+  });
 
   const got = text(await call(query, { action: 'get', trace: 'demo', ids: ['f1'] }));
   checked('get returns the selected body and refs', () => {
@@ -155,9 +158,14 @@ try {
 
   await call(append, { ...base, trace: 'other', kind: 'deadend', title: 'Dead end with class', failureClass: 'flaky-harness' });
   const visiblePatterns = await call(query, { action: 'patterns' });
-  checked('patterns excludes deadends by default', () => {
-    assert.equal(visiblePatterns.details.total, 2);
-    assert.ok(visiblePatterns.details.patterns.every((pattern) => pattern.failureClass !== 'flaky-harness'));
+  checked('patterns includes deadends by default', () => {
+    assert.equal(visiblePatterns.details.total, 3);
+    assert.ok(visiblePatterns.details.patterns.some((pattern) => pattern.failureClass === 'flaky-harness'));
+  });
+  const patternsWithoutDeadends = await call(query, { action: 'patterns', includeDeadends: false });
+  checked('patterns can exclude deadends', () => {
+    assert.equal(patternsWithoutDeadends.details.total, 2);
+    assert.ok(patternsWithoutDeadends.details.patterns.every((pattern) => pattern.failureClass !== 'flaky-harness'));
   });
   const deadendPatterns = await call(query, { action: 'patterns', kind: 'deadend', includeDeadends: true });
   checked('patterns respects kind and includeDeadends', () => {
@@ -167,9 +175,9 @@ try {
   });
   const pagedPatterns = await call(query, { action: 'patterns', limit: 1, offset: 1 });
   checked('patterns paginates classes with limit and offset', () => {
-    assert.equal(pagedPatterns.details.total, 2);
+    assert.equal(pagedPatterns.details.total, 3);
     assert.equal(pagedPatterns.details.patterns.length, 1);
-    assert.equal(pagedPatterns.details.patterns[0].failureClass, 'stale-fixture');
+    assert.equal(pagedPatterns.details.patterns[0].failureClass, 'flaky-harness');
   });
   const emptyPatterns = await call(query, { action: 'patterns', trace: 'demo', kind: 'decision' });
   checked('patterns reports the empty state', () => {
@@ -254,6 +262,48 @@ try {
   checked('rejects an oversized body', () => {});
   await assert.rejects(() => call(query, { action: 'get', trace: 'missing' }), /not found or empty/);
   checked('rejects a missing trace', () => {});
+
+  const trace = 'linked-deadend';
+  const deadend = await call(append, { ...base, trace, kind: 'deadend', title: 'Rejected fixture hypothesis' });
+  const id = deadend.details.record.id;
+  const finding = await call(append, { ...base, trace, title: 'Finding linked to the rejection', supports: [id] });
+  const findingId = finding.details.record.id;
+  const file = path.join(temporary, '.dev-vault/traces', trace, 'trace.jsonl');
+  const beforeLookup = fs.readFileSync(file);
+  const fetchFinding = await call(query, { action: 'get', trace, ids: [findingId] });
+  checked('get shows the linked deadend ID on its referring finding', () => {
+    assert.ok(text(fetchFinding).split('\n').includes(`Supports: ${id}`));
+  });
+  checked('the query schema leaves the visibility flag unset by default', () => {
+    assert.equal(Object.hasOwn(query.parameters.properties.includeDeadends, 'default'), false);
+  });
+
+  for (const action of ['get', 'evidence']) {
+    for (const [label, params, expected] of [
+      ['follows an exact deadend ID by default', { ids: [id] }, [id]],
+      ['honors explicit exclusion with mixed IDs', { ids: [id, findingId], includeDeadends: false }, [findingId]],
+      ['honors explicit inclusion', { ids: [id], includeDeadends: true }, [id]],
+      ['includes deadends without IDs by default', {}, [id, findingId]],
+      ['can hide deadends without IDs', { includeDeadends: false }, [findingId]],
+      ['matches no records for empty IDs', { ids: [] }, []],
+      ['matches no records for an unknown ID', { ids: ['x999'] }, []],
+      ['honors the kind filter with an exact ID', { ids: [id], kind: 'finding' }, []],
+    ]) {
+      const result = await call(query, { action, trace, ...params });
+      checked(`${action} ${label}`, () => assert.deepEqual(result.details.ids, expected));
+    }
+  }
+  const outlineById = await call(query, { action: 'outline', trace, ids: [id] });
+  const outlineHidden = await call(query, { action: 'outline', trace, ids: [id], includeDeadends: false });
+  const searchVisible = await call(query, { action: 'search', trace, query: 'Rejected fixture hypothesis' });
+  const searchHidden = await call(query, { action: 'search', trace, query: 'Rejected fixture hypothesis', includeDeadends: false });
+  checked('outline by ID and search include deadends unless opted out', () => {
+    assert.equal(outlineById.details.total, 1);
+    assert.equal(outlineHidden.details.total, 0);
+    assert.equal(searchVisible.details.matches.length, 1);
+    assert.deepEqual(searchHidden.details.matches, []);
+  });
+  checked('following a deadend by ID leaves its trace bytes unchanged', () => assert.deepEqual(fs.readFileSync(file), beforeLookup));
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }

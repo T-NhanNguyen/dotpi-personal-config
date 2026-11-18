@@ -6,6 +6,7 @@ import vm from 'node:vm';
 
 const appSource = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const layoutSource = await readFile(new URL('../public/organic-layout.js', import.meta.url), 'utf8');
+const panelSource = await readFile(new URL('../public/panel-toggle.js', import.meta.url), 'utf8');
 function load(source) {
  const context = vm.createContext({module:{exports:{}}});
  vm.runInContext(source, context);
@@ -15,7 +16,7 @@ const helpers = load(appSource), layout = load(layoutSource);
 const plain = value => JSON.parse(JSON.stringify(value));
 const settle = async () => { for (let i=0; i<20; i++) await new Promise(resolve => setImmediate(resolve)); };
 function element() {
- return {innerHTML:'',textContent:'',value:'',hidden:false,disabled:false,clientWidth:900,clientHeight:525,
+ return {dataset:{},innerHTML:'',textContent:'',value:'',hidden:false,disabled:false,clientWidth:900,clientHeight:525,
   classList:{add(){},remove(){},toggle(){}},setAttribute(){},addEventListener(){},querySelectorAll(){return [];},
   querySelector(){return this;},selectedOptions:[]};
 }
@@ -43,7 +44,7 @@ function mount(fetch, search='?trace=trace-a', replaceForms=false) {
  }
  const get = id => {
   if (!elements.has(id)) {
-   const node = element(); elements.set(id,node);
+   const node = element(); node.id = id; elements.set(id,node);
    if (replaceForms && id === 'detailContent') {
     let html = '';
     Object.defineProperty(node,'innerHTML',{get:()=>html,set:value=>{html=value; replaceReview(value);}});
@@ -60,6 +61,7 @@ function mount(fetch, search='?trace=trace-a', replaceForms=false) {
   location:{href:'http://localhost/'+search,search},
   setTimeout:()=>1,clearTimeout(){},ResizeObserver:class {observe(){}},console});
  vm.runInContext(layoutSource,context); context.OrganicGraph = context.window.OrganicGraph;
+ vm.runInContext(panelSource,context); context.PanelToggle = context.window.PanelToggle;
  vm.runInContext(appSource,context);
  return get;
 }
