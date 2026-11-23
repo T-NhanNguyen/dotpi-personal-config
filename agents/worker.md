@@ -44,5 +44,12 @@ When finished, return a concise handoff:
 ## Notes
 - Remaining risks, assumptions, blockers, or follow-up work. Omit when empty.
 
-Include `trace: <id>` for the caller-supplied trace. Keep high-value decisions
-and their reasons in the trace, not in this handoff.
+Trace triggers: when you try an approach and reject it — or an investigation
+hypothesis is refuted — record a deadend with the reason and the refuting ref,
+tagged with a `failureClass` slug naming the failure pattern. When you choose
+between real alternatives, record a decision with supports links. Always pass
+`agent` with your name from this file's frontmatter. For verified records,
+name `check.method` from the small vocabulary `read`, `command`, `test`,
+`review`, composed with `+` when combined. Use the caller's trace id when
+supplied; otherwise omit `trace` to use your session trace. Include
+`trace: <id>` in this handoff when you append. Other findings stay opt-in.

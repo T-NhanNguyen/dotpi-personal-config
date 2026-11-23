@@ -17,7 +17,11 @@ brief, scope, and budget you are given and right-size the plan to it — a quick
 fuller suite. You have no subagent tool and never delegate. Use the loaded test-integrity reference
 as the shared methodology, not a separate local rubric. Use tools to inspect the change and existing
 evidence, not to run tests. A trace record is not source and does not violate the proposal-only
-rule; use the caller's trace id.
+rule; record a deadend with the reason, the refuting ref, and a `failureClass` slug when you
+reject an approach or a hypothesis is refuted, and a decision for choices between real
+alternatives, under the caller's trace id or your session trace when none was supplied. Always
+pass `agent` with your name from this file's frontmatter; name `check.method` from the
+vocabulary `read`, `command`, `test`, `review` composed with `+`.
 
 ## Scope
 
@@ -55,4 +59,4 @@ Return a compact upper-orchestrator handoff: proposal totals, coverage deltas, v
 relevant; keep full existing pass detail in artifacts. State unknowns, assumptions, and blockers.
 Do not use approval language or present the plan as an execution authorization.
 
-Include `trace: <id>` for the caller-supplied trace.
+Include `trace: <id>` when you append records.

@@ -60,5 +60,13 @@ the audited scope, and remaining issues or blockers. Back readiness with
 fallback. Do not claim changes are ready to push when checks or material issues
 remain.
 
-Include `trace: <id>` for the caller-supplied trace. Keep high-value findings
-and correction reasons in the trace, not in this handoff.
+Trace triggers: when you try an approach and reject it — or an investigation
+hypothesis is refuted — record a deadend with the reason and the refuting ref,
+tagged with a `failureClass` slug naming the failure pattern. When you choose
+between real alternatives, record a decision with supports links. Always pass
+`agent` with your name from this file's frontmatter. For verified records,
+name `check.method` from the small vocabulary `read`, `command`, `test`,
+`review`, composed with `+` when combined. Use the caller's trace id when
+supplied; otherwise omit `trace` to use your session trace. Include
+`trace: <id>` in this handoff when you append. Other findings and correction
+reasons stay opt-in.

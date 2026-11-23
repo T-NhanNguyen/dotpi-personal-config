@@ -33,7 +33,7 @@ const alias = {
   '@earendil-works/pi-coding-agent': path.join(host, 'dist/index.js'),
   '@earendil-works/pi-ai': hostPiAiCompat,
   '@earendil-works/pi-agent-core': path.join(host, 'node_modules/@earendil-works/pi-agent-core/dist/index.js'),
-  '@earendil-works/pi-tui': path.join(host, 'node_modules/@earendil-works/pi-tui/dist/index.js'),
+  '@earendil-works/pi-tui': [path.join(path.dirname(host), 'pi-tui/dist/index.js'), path.join(host, 'node_modules/@earendil-works/pi-tui/dist/index.js')].find((candidate) => fs.existsSync(candidate)),
   typebox: require.resolve('typebox'),
 };
 const jiti = createJiti(import.meta.url, { alias, moduleCache: false });
@@ -54,13 +54,26 @@ try {
       else if (tool.name === 'trace_mermaid') mermaid = tool;
     },
     registerCommand: () => {},
+    registerEntryRenderer: () => {},
+    appendEntry: () => {},
+    sendUserMessage: () => {},
   });
   assert(append && query && mermaid, 'all trace tools registered');
+  assert.ok(append.parameters.required?.includes('agent'), 'trace_append requires agent');
 
   const ctx = { cwd: temporary };
   const call = (tool, params) => tool.execute('test', params, undefined, undefined, ctx);
-  const base = { trace: 'demo', kind: 'finding', title: 'A finding', body: 'The body.', refs: [{ type: 'file', path: 'a.c', lines: '1-2' }] };
+  const base = { trace: 'demo', kind: 'finding', title: 'A finding', body: 'The body.', refs: [{ type: 'file', path: 'a.c', lines: '1-2' }], agent: 'test-agent' };
   const text = (result) => result.content.map((part) => part.text).join('\n');
+
+  const fallbackCtx = { cwd: temporary, sessionManager: { getSessionId: () => 'abc123-session' } };
+  const fallback = await append.execute('test', { ...base, trace: undefined }, undefined, undefined, fallbackCtx);
+  checked('omitted trace falls back to the session-scoped trace', () => {
+    assert.match(fallback.content[0].text, /trace session-abc123-session/);
+    assert.ok(fs.existsSync(path.join(temporary, '.dev-vault/traces/session-abc123-session/trace.jsonl')));
+  });
+  await assert.rejects(append.execute('test', { ...base, trace: undefined }, undefined, undefined, ctx), /trace is required/);
+  checked('omitted trace with no session id throws', () => {});
 
   const first = await call(append, base);
   checked('append assigns a kind-prefixed id', () => assert.match(text(first), /f1/));
@@ -155,6 +168,9 @@ try {
   });
   await assert.rejects(() => call(append, { ...base, failureClass: 'not a slug' }), /Failure class/);
   checked('rejects an invalid failure class', () => {});
+  await assert.rejects(() => call(append, { ...base, failureClass: 'na' }), /placeholder/);
+  await assert.rejects(() => call(append, { ...base, failureClass: 'none' }), /placeholder/);
+  checked('rejects placeholder failure classes', () => {});
 
   await call(append, { ...base, trace: 'other', kind: 'deadend', title: 'Dead end with class', failureClass: 'flaky-harness' });
   const visiblePatterns = await call(query, { action: 'patterns' });
@@ -304,8 +320,42 @@ try {
     assert.deepEqual(searchHidden.details.matches, []);
   });
   checked('following a deadend by ID leaves its trace bytes unchanged', () => assert.deepEqual(fs.readFileSync(file), beforeLookup));
+  // Deterministic corpus analysis over the fixture vault.
+  const analyze = await jiti.import(path.join(root, 'analyze.ts'));
+  const vault = path.join(temporary, '.dev-vault/traces');
+  const analysis = analyze.analyzeCorpus(vault);
+  checked('analysis counts records, kinds, and branching signal', () => {
+    assert.equal(analysis.traces.length >= 1, true);
+    assert.equal(analysis.totalRecords > 0, true);
+    assert.ok(analysis.supportRate >= 0 && analysis.supportRate <= 1);
+  });
+  checked('analysis flags traces with zero deadends and lists failure classes', () => {
+    assert.ok(Array.isArray(analysis.zeroDeadendTraces));
+    assert.ok(Array.isArray(analysis.failureClasses));
+  });
+  const md = analyze.renderAnalysisMd(analysis, new Date('2026-11-22T00:00:00Z'));
+  checked('analysis renders a markdown report with the per-trace table', () => {
+    assert.match(md, /# Trace corpus analysis - 2026-11-22/);
+    assert.match(md, /\| trace \| records \|/);
+  });
+  const summaryLines = analyze.renderAnalysisSummary(analysis);
+  checked('analysis summary fits a chat entry', () => assert.ok(summaryLines.length <= 5));
+  // Compliance stats over a controlled 3-record vault with exact expectations.
+  const complianceTrace = path.join(vault, 'compliance-fixture');
+  fs.mkdirSync(complianceTrace, { recursive: true });
+  fs.writeFileSync(path.join(complianceTrace, 'trace.jsonl'), [
+    { id: 'f1', trace: 'compliance-fixture', kind: 'finding', title: 'a', body: 'b', refs: [{ type: 'file', path: 'x' }], agent: 'worker', confidence: 'verified', check: { method: 'read + grep', output: 'seen' }, ts: '2026-11-23T00:00:00Z' },
+    { id: 'f2', trace: 'compliance-fixture', kind: 'finding', title: 'a', body: 'b', refs: [{ type: 'file', path: 'x' }], confidence: 'verified', ts: '2026-11-23T00:00:01Z' },
+    { id: 'f3', trace: 'compliance-fixture', kind: 'finding', title: 'a', body: 'b', refs: [{ type: 'file', path: 'x' }], agent: 'explore', confidence: 'inferred', check: { method: 'Test', output: 'seen' }, ts: '2026-11-23T00:00:02Z' },
+  ].map((record) => JSON.stringify(record)).join('\n') + '\n');
+  const compliance = analyze.analyzeCorpus(vault).traces.find((t) => t.name === 'compliance-fixture');
+  checked('analysis counts agent attribution, verified-without-check, and method vocabulary', () => {
+    assert.equal(compliance.withAgent, 2);
+    assert.equal(compliance.verifiedWithoutCheck, 1);
+    assert.deepEqual([...compliance.checkMethods].sort(), ['read + grep', 'test']);
+  });
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
 
-console.log(`PASS: ${count} checks; trace append/query behavior.`);
+console.log(`PASS: ${count} checks; trace append/query/analyze behavior.`);

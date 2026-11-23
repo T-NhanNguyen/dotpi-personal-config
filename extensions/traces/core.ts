@@ -79,8 +79,13 @@ export function normalizeFailureClass(raw: string): string {
 	if (!/^[a-z0-9][a-z0-9._-]*$/.test(failureClass)) {
 		throw new Error("Failure class must be a lowercase slug: letters, digits, dot, underscore, hyphen; no spaces or slashes.");
 	}
+	if (PLACEHOLDER_FAILURE_CLASSES.has(failureClass)) {
+		throw new Error(`Failure class "${failureClass}" is a placeholder, not a pattern. Name the concrete failure, e.g. missing-test-host.`);
+	}
 	return failureClass;
 }
+
+const PLACEHOLDER_FAILURE_CLASSES = new Set(["na", "n-a", "none", "null", "test", "todo", "tbd", "unknown"]);
 
 export function readRecords(file: string): TraceRecord[] {
 	if (!fs.existsSync(file)) return [];

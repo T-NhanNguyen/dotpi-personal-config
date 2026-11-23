@@ -39,7 +39,7 @@ are needed. Give it an explicit brief: scope, actual diff, change intent and ris
 coverage, target files, budget, and check size. For new tests, let it propose assertions; you adjudicate.
 For harness-only changes, reuse approved unchanged assertion intents per the reference; do not demand
 a new semantic design cycle solely for harness changes. The writer remains proposal-only.
-Pass the caller's trace id in the brief so the writer appends to the same trace.
+If the caller supplied a trace id, pass it in the brief so the writer can append to the same trace.
 Allow one revision round.
 
 ## Adjudicate
@@ -90,4 +90,10 @@ Keep the report concise and auditable. Never invent tests or add cases to the ru
 Follow-ups identify only the minimal next step; any new tests must go through adjudication.
 Do not propose refactors or unrelated cleanups.
 
-Include `trace: <id>` for the caller-supplied trace.
+Trace triggers: record a deadend with the reason and the refuting ref when you
+reject an approach or a hypothesis is refuted, tagged with a `failureClass` slug;
+record a decision with supports links for choices between real alternatives.
+Always pass `agent` with your name from this file's frontmatter; name
+`check.method` from the vocabulary `read`, `command`, `test`, `review` composed
+with `+`. Omit `trace` to use your session trace when none was supplied.
+Include `trace: <id>` when you append.

@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { StringEnum } from "@earendil-works/pi-ai";
+import { Box, Text } from "@earendil-works/pi-tui";
 import { type ExtensionAPI, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./core.js";
 
 import { withTraceLock, readStrict, reserveId, appendRecord } from "./mutation.ts";
+import { analyzeCorpus, renderAnalysisMd, renderAnalysisSummary } from "./analyze.ts";
 
 const ACTIONS = ["list", "outline", "get", "evidence", "search", "patterns", "export"] as const;
 
@@ -99,7 +101,12 @@ const CheckParams = Type.Object({
 });
 
 const AppendParams = Type.Object({
-	trace: Type.String({ description: "Trace id slug, e.g. timer2-startup-clock." }),
+	trace: Type.Optional(
+		Type.String({
+			description:
+				"Trace id slug, e.g. timer2-startup-clock. Omit to record into the session-scoped fallback trace (session-<id>) when the caller supplied no id.",
+		}),
+	),
 	kind: StringEnum(KINDS, { description: "Record kind." }),
 	title: Type.String({ description: "One-line heading the orchestrator can scan." }),
 	body: Type.String({ description: `The conclusion or explanation. Max ${MAX_BODY} characters.` }),
@@ -115,7 +122,9 @@ const AppendParams = Type.Object({
 	steps: Type.Optional(
 		Type.Array(StepParams, { description: "Ordered narrowing procedure for kind=path." }),
 	),
-	agent: Type.Optional(Type.String({ description: "Agent name that produced the record." })),
+	agent: Type.String({
+		description: "Your agent name from your frontmatter (e.g. worker, explore, code-auditor). Required for attribution; use 'orchestrator' when appending as the main agent.",
+	}),
 	failureClass: Type.Optional(
 		Type.String({ description: "Stable lowercase slug for a failure pattern, e.g. missing-test-host. Used by trace_query action=patterns." }),
 	),
@@ -276,12 +285,19 @@ export default function (pi: ExtensionAPI) {
 			"Append only records that would let a reader present the work or answer technical questions about it. If a record would not survive that bar, do not append it. Skip mundane steps such as pwd, directory listings, or merely opening a file.",
 			"One record per established conclusion, not per action. Use finding for a conclusion, decision for a choice and its rejected alternative, concept only when the reader will need the definition, path for the ordered narrowing steps, evidence for a source excerpt, and deadend only with a concrete refuting ref.",
 			"The review kind is reserved for human reviewers using the trace viewer; agents never append review records.",
-			"Use the trace id the orchestrator supplies; do not invent a new one. Every record needs a real ref, and the body stays under 1200 characters.",
+			"Use the trace id the orchestrator supplies; when none is supplied, omit trace and the record lands in the session-scoped fallback trace. Never invent a project-style slug of your own. Every record needs a real ref, and the body stays under 1200 characters.",
 			"After appending, include trace: <id> in your final handoff with a 3 to 6 bullet summary. Do not dump trace contents into the report.",
 		],
 		parameters: AppendParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const trace = normalizeTraceId(params.trace);
+			const sessionId = (ctx as { sessionManager?: { getSessionId?: () => string } }).sessionManager?.getSessionId?.();
+			const trace = params.trace
+				? normalizeTraceId(params.trace)
+				: sessionId
+					? `session-${sessionId}`
+					: (() => {
+							throw new Error("trace is required: no id was supplied and no session id is available for the fallback trace.");
+						})();
 			const title = params.title.trim();
 			const body = params.body.trim();
 			const failureClass = params.failureClass === undefined ? undefined : normalizeFailureClass(params.failureClass);
@@ -297,7 +313,6 @@ export default function (pi: ExtensionAPI) {
 
 			const dir = path.join(traceRoot(ctx.cwd), trace);
 			const file = path.join(dir, "trace.jsonl");
-			const sessionId = (ctx as { sessionManager?: { getSessionId?: () => string } }).sessionManager?.getSessionId?.();
 			let record: TraceRecord | undefined;
 			withTraceLock(file, () => {
 				ensureTrace(dir, trace);
@@ -316,7 +331,7 @@ export default function (pi: ExtensionAPI) {
 					...(params.confidence ? { confidence: params.confidence } : {}),
 					...(params.check ? { check: params.check } : {}),
 					...(params.steps ? { steps: params.steps } : {}),
-					...(params.agent ? { agent: params.agent } : {}),
+					agent: params.agent,
 					...(failureClass ? { failureClass } : {}),
 					...(sessionId ? { session: sessionId } : {}),
 					ts: new Date().toISOString(),
@@ -523,6 +538,54 @@ export default function (pi: ExtensionAPI) {
 				content: [{ type: "text" as const, text }],
 				details: { trace, diagram, records: visibleRecords.length, saved },
 			};
+		},
+	});
+
+	pi.registerEntryRenderer("trace-analysis", (entry, _options, theme) => {
+		const data = entry.data as { title: string; lines: string[] } | undefined;
+		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+		if (!data) {
+			box.addChild(new Text(theme.fg("warning", "trace-analysis: missing report data")));
+			return box;
+		}
+		box.addChild(new Text(theme.bold(data.title)));
+		for (const line of data.lines) box.addChild(new Text(line));
+		return box;
+	});
+
+	pi.registerCommand("trace-analyze", {
+		description: "Analyze the trace corpus: /trace-analyze [deep] - report is free; deep sends it to the agent",
+		handler: async (args, ctx) => {
+			const root = traceRoot(ctx.cwd);
+			const analysis = analyzeCorpus(root);
+			if (analysis.totalRecords === 0) {
+				const message = "No trace records in this vault yet.";
+				if (ctx.hasUI) ctx.ui.notify(message, "info");
+				else console.log(message);
+				return;
+			}
+			const report = renderAnalysisMd(analysis, new Date());
+			const reportFile = path.join(root, `analysis-${new Date().toISOString().slice(0, 10)}.md`);
+			await withFileMutationQueue(reportFile, async () => {
+				await fs.promises.mkdir(path.dirname(reportFile), { recursive: true });
+				await fs.promises.writeFile(reportFile, report, "utf8");
+			});
+			const summary = [...renderAnalysisSummary(analysis), `report: ${path.relative(ctx.cwd, reportFile)}`];
+			if (ctx.hasUI) {
+				pi.appendEntry("trace-analysis", { title: "trace corpus analysis", lines: summary });
+			} else {
+				console.log(summary.join("\n"));
+			}
+
+			if (args?.trim().toLowerCase() !== "deep") return;
+			pi.sendUserMessage(
+				[
+					`Analyze the trace corpus. The deterministic report is at ${path.relative(ctx.cwd, reportFile)} - read it first.`,
+					"Then sample, don't scan: use trace_query action=patterns, then outline/get on the traces the report flags (largest records, zero-deadend traces, repeated failure classes).",
+					"Produce a ranked list of concrete proposals: (1) repeated failure patterns that deserve a process fix, with the record ids as evidence; (2) low-value record-writing behavior to tighten or drop in agents/*.md guidelines; (3) any schema or tooling changes to the traces extension itself.",
+					"Each proposal must name its target file. Do not apply any edits until I confirm.",
+				].join("\n"),
+			);
 		},
 	});
 

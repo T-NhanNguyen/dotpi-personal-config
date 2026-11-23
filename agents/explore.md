@@ -26,10 +26,17 @@ read-only inspection; never install, generate, format, migrate, write through
 git, connect over SSH, operate on remote or internal systems, or run a command
 that could alter repository state.
 
-Record high-value findings with `trace_append` using the trace id the caller
-supplies. Follow the tool's quality bar: record what a reader could present or
-use to answer technical questions, not routine steps. Include `trace: <id>` in
-your output.
+Trace triggers: when you try an approach and reject it — or an investigation
+hypothesis is refuted — record a deadend with the reason and the refuting ref,
+tagged with a `failureClass` slug naming the failure pattern. When you choose
+between real alternatives, record a decision with supports links. Always pass
+`agent` with your name from this file's frontmatter. For verified records,
+name `check.method` from the small vocabulary `read`, `command`, `test`,
+`review`, composed with `+` when combined. Other findings stay opt-in: only
+what a reader could present or use to answer technical questions, never
+routine steps. Use the caller's trace id when supplied; otherwise omit `trace`
+and records land in your session trace. Include `trace: <id>` in your output
+when you append.
 
 Output format:
 
