@@ -4,7 +4,7 @@ import type { Parent } from "./provenance.js";
 import { GROUPS, type Filters, type Resource } from "./storage.js";
 
 type Context = ExtensionCommandContext;
-type Selection = { name: string; edit: boolean };
+type Selection = { kind: "add" } | { kind: "switch" | "edit" | "rename" | "delete"; name: string };
 type Menu = { title: string; help: string; notice?: string; length: number; initial: number; row: (index: number) => string };
 
 function list<T>(ctx: Context, menu: Menu, onKey: (data: string, index: number, done: (result: T | undefined) => void) => void) {
@@ -38,7 +38,7 @@ function list<T>(ctx: Context, menu: Menu, onKey: (data: string, index: number, 
 export function pickProfile(ctx: Context, names: string[], highlight: string | undefined, active: string | undefined) {
 	return list<Selection>(ctx, {
 		title: "Profile for this project",
-		help: "↑/↓ move   Enter switch   e edit   Esc close",
+		help: "↑/↓ move  Enter switch  e edit  a add  r rename  d delete  Esc close",
 		length: names.length,
 		initial: names.indexOf(highlight ?? "none"),
 		row: (index) => {
@@ -48,8 +48,11 @@ export function pickProfile(ctx: Context, names: string[], highlight: string | u
 	}, (data, index, done) => {
 		const name = names[index];
 		if (matchesKey(data, Key.escape)) done(undefined);
-		else if (matchesKey(data, Key.enter)) done({ name, edit: false });
-		else if (name !== "none" && matchesKey(data, "e")) done({ name, edit: true });
+		else if (matchesKey(data, Key.enter)) done({ kind: "switch", name });
+		else if (matchesKey(data, "a")) done({ kind: "add" });
+		else if (name !== "none" && matchesKey(data, "e")) done({ kind: "edit", name });
+		else if (name !== "none" && matchesKey(data, "r")) done({ kind: "rename", name });
+		else if (name !== "none" && matchesKey(data, "d")) done({ kind: "delete", name });
 	});
 }
 

@@ -47,7 +47,7 @@ try {
 	writeJson(join(agentDir, "settings.json"), { packages: [pkg] });
 	writeJson(path, initial);
 
-	async function open({ label, trusted = true, history = false, waitForIdle = async () => {}, custom, reload }) {
+	async function open({ label, trusted = true, history = false, waitForIdle = async () => {}, custom, input, select, reload }) {
 		const settingsManager = SettingsManager.create(cwd, agentDir);
 		settingsManager.setProjectTrusted(trusted);
 		const sessionManager = SessionManager.inMemory(cwd);
@@ -61,7 +61,7 @@ try {
 		await session.bindExtensions({
 			mode: custom ? "tui" : "rpc",
 			uiContext: {
-				custom,
+				custom, input, select,
 				notify(text, level) { notifications.push({ text, level }); },
 				setStatus(key, value) { statuses.set(key, value); },
 				theme: { fg(color, text) { assert.equal(color, "dim"); return text; } },
@@ -189,7 +189,25 @@ try {
 	assert.equal(failure.notifications.at(-1).level, "error");
 	writeJson(path, initial);
 
-	const terminal = await open({ label: "cli", custom });
+	const inputs = [];
+	const selections = [];
+	const terminal = await open({
+		label: "cli", custom,
+		async input(title) {
+			const next = inputs.shift();
+			assert.ok(next, `Unexpected input: ${title}`);
+			assert.equal(title, next[0]);
+			return next[1];
+		},
+		async select(title, options) {
+			const next = selections.shift();
+			assert.ok(next, `Unexpected select: ${title}`);
+			assert.match(title, next[0]);
+			assert.equal(options[0], "Cancel");
+			assert.ok(options.includes(next[1]));
+			return next[1];
+		},
+	});
 	assert.equal(terminal.statuses.get("project-profile"), "Profile: None");
 	await terminal.session.prompt("/profile webdev");
 	assert.equal(terminal.statuses.get("project-profile"), "Profile: webdev");
@@ -284,7 +302,7 @@ try {
 	assert.deepEqual(readJson(filtersPath), saved);
 
 	const otherSave = { ...saved, tools: [...saved.tools, "other-session-tool"] };
-	const lock = `${filtersPath}.lock`;
+	const lock = join(pkg, "profiles", ".profiles.lock");
 	ui.push(
 		(view) => view.handleInput("e"),
 		(view) => {
@@ -352,7 +370,75 @@ try {
 	assert.deepEqual(terminal.session.resourceLoader.getSkills().skills.map(({ name }) => name).sort(), ["inherited-skill", "local-example"]);
 	assert.deepEqual(terminal.session.promptTemplates.map(({ name }) => name).sort(), ["inherited-prompt", "local-example"]);
 	assert.deepEqual(readJson(join(agentDir, "settings.json")), globalSettings);
-	console.log("Profile integration checks passed: switching, terminal editing, real resource filters, restoration, trust, history and settings preservation.");
+
+	function hotkeyFor(name, key) {
+		return (view) => {
+			for (let i = 0; i < 10; i++) {
+				const selected = view.render(110).find((line) => line.startsWith("> "));
+				if (selected?.slice(2).replace(/ \(active\)$/, "") === name) {
+					view.handleInput(key);
+					return;
+				}
+				view.handleInput("j");
+			}
+			assert.fail(`Could not highlight ${name}`);
+		};
+	}
+
+	inputs.push(["New profile name", undefined], ["New profile name", "../escape"], ["New profile name", "scratch"], ["New profile name", "scratch"]);
+	ui.push(
+		hotkeyFor("None", "a"),
+		hotkeyFor("None", "a"),
+		hotkeyFor("None", "a"),
+		hotkeyFor("scratch", "a"),
+		(view) => {
+			assert.deepEqual(readJson(path), initial, "Creating must not select the profile");
+			const manifest = readJson(join(profilePath("scratch"), "package.json"));
+			assert.equal(manifest.name, "profile-scratch");
+			assert.equal(manifest.private, true);
+			assert.equal(existsSync(join(pkg, "escape")), false);
+			hotkeyFor("scratch", "\r")(view);
+		},
+	);
+	await terminal.session.prompt("/profile");
+	assert.equal(inputs.length, 0);
+	assert.deepEqual(readJson(path).packages, [keep, profilePath("scratch")]);
+	assert.deepEqual(terminal.session.resourceLoader.getExtensions().errors, [], "An empty profile isn't an extension entrypoint");
+	assert.ok(terminal.notifications.some(({ text }) => /already in use/.test(text)));
+
+	ui.push(hotkeyFor("scratch", "r"), hotkeyFor("scratch", "d"), (view) => view.handleInput("\x1b"));
+	await terminal.session.prompt("/profile");
+	assert.equal(terminal.notifications.at(-1).text, "Switch to None or another profile first.");
+	assert.equal(existsSync(profilePath("scratch")), true);
+	await terminal.session.prompt("/profile none");
+
+	const ownPrompt = join(profilePath("scratch"), "prompts", "notes.md");
+	mkdirSync(join(profilePath("scratch"), "prompts"));
+	writeFileSync(ownPrompt, "Keep all the profile's files on rename.\n");
+	writeJson(join(profilePath("scratch"), "filters.json"), { skills: [], tools: ["bash"], prompts: ["./scratch/prompts/notes.md"] });
+	inputs.push(["Rename scratch", "webdev"], ["Rename scratch", "renamed"]);
+	ui.push(hotkeyFor("scratch", "r"), hotkeyFor("scratch", "r"), (view) => {
+		assert.match(view.render(110).join("\n"), /^> renamed$/m);
+		view.handleInput("\x1b");
+	});
+	await terminal.session.prompt("/profile");
+	assert.equal(inputs.length, 0);
+	assert.equal(existsSync(profilePath("scratch")), false);
+	assert.equal(readFileSync(join(profilePath("renamed"), "prompts", "notes.md"), "utf8"), "Keep all the profile's files on rename.\n");
+	assert.deepEqual(readJson(join(profilePath("renamed"), "filters.json")), { skills: [], tools: ["bash"], prompts: ["./renamed/prompts/notes.md"] });
+
+	selections.push([/Permanently delete renamed/, "Cancel"], [/Permanently delete renamed/, "Delete renamed"]);
+	ui.push(hotkeyFor("renamed", "d"), hotkeyFor("renamed", "d"), (view) => {
+		assert.doesNotMatch(view.render(110).join("\n"), /renamed/);
+		view.handleInput("\x1b");
+	});
+	await terminal.session.prompt("/profile");
+	assert.equal(selections.length, 0);
+	assert.equal(existsSync(profilePath("renamed")), false);
+	assert.ok(existsSync(profilePath("embedded")) && existsSync(profilePath("webdev")));
+	assert.deepEqual(readJson(path), initial);
+	assert.equal(existsSync(lock), false);
+	console.log("Profile integration checks passed: switching, editing, creation, renaming, deletion, filters and restoration.");
 } finally {
 	for (const session of opened) session.dispose();
 	rmSync(tmp, { recursive: true, force: true });

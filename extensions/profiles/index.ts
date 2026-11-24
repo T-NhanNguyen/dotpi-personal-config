@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { editProfile, pickProfile } from "./editor.js";
 import { toolParents, UNAVAILABLE } from "./provenance.js";
-import { activeSelection, GROUPS, listProfileResources, listProfiles, readFilters, readMaskedTools, saveFilters, writeProfile, type Resource } from "./storage.js";
+import { activeSelection, createProfile, deleteProfile, GROUPS, listProfileResources, listProfiles, readFilters, readMaskedTools, renameProfile, saveFilters, writeProfile, type Resource } from "./storage.js";
 
 const MAX_COMPOSER_PROFILES = 11; // The twelfth option is None.
 type Choice = { value: string; label: string; command: string };
@@ -104,13 +104,45 @@ export default function (pi: ExtensionAPI) {
 		if (disabledTools.has(event.toolName)) return { block: true, reason: `Disabled in the ${loaded.name} profile.` };
 	});
 
-	async function chooseInTerminal(ctx: ExtensionCommandContext, profiles: string[]) {
+	async function chooseInTerminal(ctx: ExtensionCommandContext) {
 		let highlighted = loaded.name;
 		for (;;) {
-			const choice = await pickProfile(ctx, ["none", ...profiles], highlighted, loaded.name);
-			if (!choice || !choice.edit) return choice?.name;
-			highlighted = choice.name;
+			const choice = await pickProfile(ctx, ["none", ...listProfiles()], highlighted, loaded.name);
+			if (!choice) return;
+			if (choice.kind === "switch") return choice.name;
 			try {
+				if (choice.kind === "add") {
+					const entered = await ctx.ui.input("New profile name", "e.g. firmware-review");
+					if (entered === undefined) continue;
+					const name = entered.trim();
+					createProfile(name);
+					highlighted = name;
+					ctx.ui.notify(`Created ${name}. Press Enter to select it or e to edit it.`, "info");
+					continue;
+				}
+				highlighted = choice.name;
+				if (choice.kind === "rename" || choice.kind === "delete") {
+					if (loaded.name === choice.name || activeSelection(ctx.cwd).name === choice.name) {
+						throw new Error("Switch to None or another profile first.");
+					}
+					if (choice.kind === "rename") {
+						const entered = await ctx.ui.input(`Rename ${choice.name}`, choice.name);
+						if (entered === undefined) continue;
+						const name = entered.trim();
+						if (name === choice.name) continue;
+						renameProfile(ctx.cwd, choice.name, name);
+						highlighted = name;
+						ctx.ui.notify(`Renamed ${choice.name} to ${name}. Projects using the old name must select the new name.`, "info");
+					} else {
+						const remove = `Delete ${choice.name}`;
+						const answer = await ctx.ui.select(`Permanently delete ${choice.name} and all its files? Other projects may use it.`, ["Cancel", remove]);
+						if (answer !== remove) continue;
+						deleteProfile(ctx.cwd, choice.name);
+						highlighted = loaded.name;
+						ctx.ui.notify(`Deleted ${choice.name}.`, "info");
+					}
+					continue;
+				}
 				const { filters: saved, revision } = readFilters(choice.name);
 				const available = await listProfileResources(ctx.cwd, choice.name);
 				const tools = new Map(pi.getAllTools().map(({ name, sourceInfo }) => [name, sourceInfo]));
@@ -131,13 +163,13 @@ export default function (pi: ExtensionAPI) {
 				});
 				if (savedChanges) ctx.ui.notify(`Saved ${choice.name}. Select it to apply your changes.`, "info");
 			} catch (error) {
-				ctx.ui.notify(`Profile not edited: ${String(error)}`, "error");
+				ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
 			}
 		}
 	}
 
 	pi.registerCommand("profile", {
-		description: "Switch this project's profile: /profile <name> or /profile none. In the terminal picker, e edits.",
+		description: "Switch a project profile. In the terminal picker: e edit, a add, r rename, d delete.",
 		handler: async (args, ctx) => {
 			if (!ctx.isProjectTrusted()) {
 				ctx.ui.notify("Trust this project before switching profiles.", "warning");
@@ -145,13 +177,12 @@ export default function (pi: ExtensionAPI) {
 			}
 			let target: string | undefined;
 			try {
-				const profiles = listProfiles();
 				const terminal = ctx.hasUI && isTerminal(ctx);
 				const choice = args.trim() || (terminal
-					? await chooseInTerminal(ctx, profiles)
-					: await ctx.ui.select("Profile for this project", ["none", ...profiles]));
+					? await chooseInTerminal(ctx)
+					: await ctx.ui.select("Profile for this project", ["none", ...listProfiles()]));
 				if (!choice) return;
-				if (choice !== "none" && !profiles.includes(choice)) {
+				if (choice !== "none" && !listProfiles().includes(choice)) {
 					ctx.ui.notify(`No profile named "${choice}".`, "error");
 					return;
 				}

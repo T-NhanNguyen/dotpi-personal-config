@@ -17,6 +17,18 @@ need to copy or link anything into the Pi agent directory. Leave the profile
 packages out of global settings if you want them to load only when selected.
 These profiles don't change `/model-profile` or `/subagent-profile`.
 
+## Manage profiles in the terminal
+
+In `/profile`, press **a** to add, **r** to rename the highlighted profile, or
+**d** to delete it. Enter submits the name; Esc cancels. Use 1–40 lowercase
+letters, digits, or dashes, starting with a letter or digit. `none` is reserved.
+A new profile starts with just a `package.json`; creating it doesn't activate it.
+
+Rename moves the whole folder and preserves its saved filters. Delete removes
+all files in the folder after confirmation. Switch away from the profile before
+renaming or deleting it. Other projects that point to that folder need to select
+a new profile themselves.
+
 ## Edit a profile in the terminal
 
 1. Run `/profile` in the interactive Pi CLI. Highlight a profile with **↑/↓**

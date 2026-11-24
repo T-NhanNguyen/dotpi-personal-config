@@ -19,11 +19,47 @@ type Settings = Record<string, unknown>;
 const emptyFilters = (): Filters => ({ skills: [], tools: [], prompts: [] });
 const maskRoot = () => resolve(getAgentDir(), "profile-masks");
 
+function validProfileName(name: string) {
+	return name !== "none" && PROFILE_NAME.test(name);
+}
+
 export function listProfiles(): string[] {
-	return readdirSync(PROFILES_DIR, { withFileTypes: true })
-		.filter((entry) => entry.isDirectory() && entry.name !== "none" && PROFILE_NAME.test(entry.name))
-		.map((entry) => entry.name)
-		.sort();
+	try {
+		return readdirSync(PROFILES_DIR, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && validProfileName(entry.name))
+			.map((entry) => entry.name)
+			.sort();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw error;
+	}
+}
+
+function profilePath(name: string) {
+	if (!validProfileName(name)) throw new Error('Use 1–40 lowercase letters, digits or dashes, starting with a letter or digit. "none" is reserved.');
+	return join(PROFILES_DIR, name);
+}
+
+function existingProfile(name: string) {
+	const path = profilePath(name);
+	if (!listProfiles().includes(name)) throw new Error(`Profile "${name}" no longer exists.`);
+	return path;
+}
+
+function withProfileLock<T>(action: () => T): T {
+	mkdirSync(PROFILES_DIR, { recursive: true });
+	const lock = join(PROFILES_DIR, ".profiles.lock");
+	try {
+		mkdirSync(lock);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		throw new Error("Profile save is locked. Try again when the other operation finishes.");
+	}
+	try {
+		return action();
+	} finally {
+		rmdirSync(lock);
+	}
 }
 
 function readObject(path: string): { value: Settings; mode: number } | undefined {
@@ -49,6 +85,82 @@ function writeObject(path: string, value: object, mode = 0o600) {
 	} finally {
 		rmSync(tempDir, { recursive: true, force: true });
 	}
+}
+
+export function createProfile(name: string) {
+	const path = profilePath(name);
+	withProfileLock(() => {
+		try {
+			mkdirSync(path);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			throw new Error(`Profile name "${name}" is already in use.`);
+		}
+		try {
+			writeObject(join(path, "package.json"), {
+				name: `profile-${name}`,
+				private: true,
+				version: "0.1.0",
+				// Declare conventional paths even when empty so Pi doesn't try this directory as an extension.
+				pi: { extensions: ["extensions"], skills: ["skills"], prompts: ["prompts"], themes: ["themes"] },
+			}, 0o644);
+		} catch (error) {
+			rmdirSync(path);
+			throw error;
+		}
+	});
+}
+
+function assertInactive(cwd: string, name: string) {
+	if (activeSelection(cwd).name === name) throw new Error("Switch this project to None or another profile first.");
+}
+
+export function renameProfile(cwd: string, name: string, nextName: string) {
+	const next = profilePath(nextName);
+	withProfileLock(() => {
+		const current = existingProfile(name);
+		if (current === next) return;
+		assertInactive(cwd, name);
+		try {
+			lstatSync(next);
+			throw new Error(`Profile name "${nextName}" is already in use.`);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+		const filterFile = "filters.json";
+		const saved = readObject(join(current, filterFile));
+		const value = saved ? { ...saved.value } : undefined;
+		const prefix = `./${name}/`;
+		// Repo-local skill and prompt IDs include the folder name; preserve their exclusions.
+		let changed = false;
+		if (value) {
+			for (const group of ["skills", "prompts"]) {
+				const ids = value[group];
+				if (!Array.isArray(ids)) continue;
+				value[group] = ids.map((id) => {
+					if (typeof id !== "string" || !id.startsWith(prefix)) return id;
+					changed = true;
+					return `./${nextName}/${id.slice(prefix.length)}`;
+				});
+			}
+		}
+		renameSync(current, next);
+		if (!changed || !value) return;
+		try {
+			writeObject(join(next, filterFile), value, saved?.mode);
+		} catch (error) {
+			renameSync(next, current);
+			throw error;
+		}
+	});
+}
+
+export function deleteProfile(cwd: string, name: string) {
+	withProfileLock(() => {
+		const path = existingProfile(name);
+		assertInactive(cwd, name);
+		rmSync(path, { recursive: true });
+	});
 }
 
 function projectSettings(cwd: string) {
@@ -112,25 +224,16 @@ export function readFilters(profile: string): FilterSnapshot {
 }
 
 export function saveFilters(profile: string, filters: Filters, expectedRevision: FilterSnapshot["revision"]) {
-	const path = join(PROFILES_DIR, profile, "filters.json");
-	const lock = `${path}.lock`;
 	// Hold the lock across both the revision check and the atomic replacement.
-	try {
-		mkdirSync(lock);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-		throw new Error("Profile save is locked. Try again when the other save finishes.");
-	}
-	try {
+	withProfileLock(() => {
+		const path = join(existingProfile(profile), "filters.json");
 		const current = readObject(path);
 		const revision = current === undefined ? undefined : JSON.stringify(current.value);
 		if (revision !== expectedRevision) {
 			throw new Error("Filters changed on disk. Reopen the editor to load them.");
 		}
 		writeObject(path, { ...current?.value, ...filters }, current?.mode);
-	} finally {
-		rmdirSync(lock);
-	}
+	});
 }
 
 function resourceId(path: string) {
@@ -205,13 +308,16 @@ export async function writeProfile(cwd: string, target: string | undefined, wait
 		}
 	}
 	await waitForIdle();
-	// Resource discovery and idle waiting can take time; don't replace edits made meanwhile.
-	if (JSON.stringify(projectSettings(cwd).settings) !== JSON.stringify(settings)) {
-		throw new Error("Project settings changed while switching. Try /profile again.");
-	}
-	if (mask) {
-		mask.persist();
-		next.unshift(mask.entry);
-	}
-	if (JSON.stringify(next) !== JSON.stringify(packages)) writeObject(path, { ...settings, packages: next }, mode);
+	withProfileLock(() => {
+		// Resource discovery and idle waiting can take time; don't replace edits made meanwhile.
+		if (JSON.stringify(projectSettings(cwd).settings) !== JSON.stringify(settings)) {
+			throw new Error("Project settings changed while switching. Try /profile again.");
+		}
+		if (target !== undefined) existingProfile(target);
+		if (mask) {
+			mask.persist();
+			next.unshift(mask.entry);
+		}
+		if (JSON.stringify(next) !== JSON.stringify(packages)) writeObject(path, { ...settings, packages: next }, mode);
+	});
 }
