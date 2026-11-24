@@ -42,7 +42,7 @@ try {
   fs.writeFileSync(config, JSON.stringify({ version: 2, agents: { worker: { model: 'old/model', thinking: 'high' } } }));
   const original = fs.readFileSync(config, 'utf8');
   const muse = { provider: 'openrouter', id: 'meta/muse-spark-1.3-contributor', name: 'Meta: Muse Spark 1.3 Contributor', reasoning: true };
-  let models = [muse, { provider: 'old', id: 'model', reasoning: true }, { provider: 'openai', id: 'gpt-6.1-sol', reasoning: true }, { provider: 'deepseek', id: 'deepseek-v4.1-flash', reasoning: true }];
+  let models = [muse, { provider: 'old', id: 'model', reasoning: true }, { provider: 'openai', id: 'gpt-6.2-sol', reasoning: true }, { provider: 'deepseek', id: 'deepseek-v4.1-flash', reasoning: true }];
   const agents = () => discoverAgents(temporary, 'user').agents;
   function runtime(manager = SessionManager.inMemory(temporary), ui = true) {
     const commands = {}, notices = [];
@@ -79,7 +79,7 @@ try {
   const museEntry = a.manager.getLeafId();
   await a.run('subagent-profile', 'gpt');
   const gptEntry = a.manager.getLeafId();
-  checked('profile switch works; latest snapshot wins', () => assert(a.effective().every(x => x.model === 'openai/gpt-6.1-sol')));
+  checked('profile switch works; latest snapshot wins', () => assert(a.effective().every(x => x.model === 'openai/gpt-6.2-sol')));
   a.manager.branch(museEntry);
   checked('tree navigation ignores newer abandoned GPT branch', () => assert(a.effective().every(x => x.model.startsWith('openrouter/'))));
   await a.run('subagent-profile', 'clear');
@@ -101,7 +101,7 @@ try {
     const snapshot = profiles.createProfileMarker('muse', muse, [{ ...agents()[0], model: 'local/coder:low', thinking: undefined }], [{ provider: 'local', id: 'coder:low', reasoning: true }]);
     assert.equal(Object.values(snapshot.assignments)[0].thinking, undefined);
   });
-  const savedSet = await a.run('subagent-model', 'set worker openai/gpt-6.1-sol:medium');
+  const savedSet = await a.run('subagent-model', 'set worker openai/gpt-6.2-sol:medium');
   checked('legacy set warns that session wins and does not change snapshot', () => {
     assert.match(savedSet, /Session profile 'muse' still takes precedence/);
     assert.equal(a.effective().find(x => x.name === 'worker').thinking, 'high');
@@ -148,14 +148,14 @@ try {
   try { await print.run('subagent-profile', 'muse'); } finally { process.stderr.write = oldWrite; }
   checked('headless command uses stderr without UI calls', () => assert.match(printed, /Session profile: muse/));
   // Profile definitions and default selection are optional, and legacy setters preserve them.
-  fs.writeFileSync(config, JSON.stringify({ version: 2, agents: {}, profiles: { fallback: 'openai/gpt-6.1-sol' }, defaultProfile: 'fallback' }));
+  fs.writeFileSync(config, JSON.stringify({ version: 2, agents: {}, profiles: { fallback: 'openai/gpt-6.2-sol' }, defaultProfile: 'fallback' }));
   await picker.savePreference('worker', { model: 'old/model', thinking: 'medium' });
   checked('legacy setter preserves profile definitions/default', () => assert.equal(JSON.parse(fs.readFileSync(config)).defaultProfile, 'fallback'));
   const fresh = runtime();
-  checked('new session uses configured default profile', () => assert(fresh.effective().every(x => x.model === 'openai/gpt-6.1-sol')));
+  checked('new session uses configured default profile', () => assert(fresh.effective().every(x => x.model === 'openai/gpt-6.2-sol')));
   await fresh.run('subagent-profile', 'muse');
   await fresh.run('subagent-profile', 'clear');
-  checked('clear returns to configured default', () => assert(fresh.effective().every(x => x.model === 'openai/gpt-6.1-sol')));
+  checked('clear returns to configured default', () => assert(fresh.effective().every(x => x.model === 'openai/gpt-6.2-sol')));
   // Fake child process captures actual arguments in all spawn modes.
   const factory = await jiti.import(path.join(root, 'index.ts'), { default: true });
   let tool;

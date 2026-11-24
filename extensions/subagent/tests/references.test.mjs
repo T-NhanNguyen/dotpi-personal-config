@@ -117,7 +117,7 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
     assert(videoChild.args.includes('--no-session'));
     assert.equal(videoChild.args[videoChild.args.indexOf('--tools') + 1], 'read,write,edit,bash,grep,find,ls');
     assert.equal(videoChild.args.at(-1), `Task: ${videoTask}`);
-    assert.equal(videoDefinition.model, 'openai/gpt-6.1-sol:medium');
+    assert.equal(videoDefinition.model, 'openai/gpt-6.2-sol:medium');
   });
   checked('saved video-maker supplies integration policy without corrective task text', () => {
     assert(!/fork|narrat|MCP|audio/i.test(videoTask));

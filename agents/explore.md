@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Fast read-only codebase reconnaissance with structured findings for the primary agent
-model: openai/gpt-6.1-sol:low
+model: openai/gpt-6.2-sol:low
 tools: read, grep, find, ls, bash, trace_append
 ---
 

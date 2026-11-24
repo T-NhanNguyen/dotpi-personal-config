@@ -12,7 +12,7 @@ export const PROFILE_ENTRY = "subagent-profile";
 export type ProfileDefinition = string | Record<string, string>;
 export const BUILTIN_PROFILES: Record<string, ProfileDefinition> = {
 	muse: "meta/muse-spark-1.3-contributor",
-	gpt: "openai/gpt-6.1-sol",
+	gpt: "openai/gpt-6.2-sol",
 	deepseek: {
 		"code-auditor": "deepseek/deepseek-v4-pro:high",
 		"test-merit-gate": "deepseek/deepseek-v4-pro:high",

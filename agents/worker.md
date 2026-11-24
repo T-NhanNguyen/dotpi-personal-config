@@ -1,7 +1,7 @@
 ---
 name: worker
 description: General-purpose implementation agent for substantial delegated coding tasks; can inspect, edit, and write tests autonomously
-model: openai/gpt-6.1-sol:medium
+model: openai/gpt-6.2-sol:medium
 tools: read, write, edit, bash, grep, find, ls, trace_append
 references:
   - ../extensions/prompt-snippets/snippets/programming-guideline.md
