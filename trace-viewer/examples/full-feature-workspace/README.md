@@ -125,13 +125,11 @@ button. Session/ref paths are not portable source links.
 The viewer initially **shows** deadends (dimmed). Its Patterns API includes
 deadends even when the canvas hides them. Extension `trace_query` reads default
 to excluding deadends; set `includeDeadends: true` when comparing to the viewer.
-Extension `trace_mermaid` supports provenance, path, and decision diagrams;
-`write: true` writes `diagram-<type>.mmd` in the trace folder. It returns Mermaid
-text, not a browser-rendered export. `trace_query` action `export` copies the
-full JSONL and optional metadata as `<trace>.trace.jsonl` and `<trace>.meta.json`
-to `dest` (it is not a filtered visible-graph screenshot). These extension tools
-operate relative to their current workspace: use this sample cwd, not a real
-vault. Export does not bundle external sessions or referenced sources.
+The `trace_query` action `export` copies the full JSONL and optional metadata as
+`<trace>.trace.jsonl` and `<trace>.meta.json` to `dest` (it is not a filtered
+visible-graph screenshot). The tool operates relative to its current workspace:
+use this sample cwd, not a real vault. Export does not bundle external sessions
+or referenced sources.
 
 ## External session format and selection
 

@@ -62,6 +62,9 @@ repository but is excluded from the package manifest
 (`!extensions/kinetograph/index.ts` in `package.json`) while the feature is
 unfinished, so installs neither load it nor install its npm dependency.
 
+The [project profile switcher](extensions/profiles/README.md) loads with this
+package. Its demo tools and skills stay off until you pick a profile.
+
 ## Layout
 
 ```text

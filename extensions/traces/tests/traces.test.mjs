@@ -46,19 +46,21 @@ try {
   const factory = await jiti.import(path.join(root, 'index.ts'), { default: true });
   let append;
   let query;
-  let mermaid;
+  const tools = [];
+  const commands = [];
   factory({
     registerTool: (tool) => {
+      tools.push(tool.name);
       if (tool.name === 'trace_append') append = tool;
       else if (tool.name === 'trace_query') query = tool;
-      else if (tool.name === 'trace_mermaid') mermaid = tool;
     },
-    registerCommand: () => {},
+    registerCommand: (name) => commands.push(name),
     registerEntryRenderer: () => {},
     appendEntry: () => {},
     sendUserMessage: () => {},
   });
-  assert(append && query && mermaid, 'all trace tools registered');
+  assert.deepEqual(tools.sort(), ['trace_append', 'trace_query']);
+  assert.deepEqual(commands.sort(), ['trace-analyze', 'trace-view']);
   assert.ok(append.parameters.required?.includes('agent'), 'trace_append requires agent');
 
   const ctx = { cwd: temporary };
@@ -227,11 +229,6 @@ try {
     assert.match(text(review), /r1/);
     assert.match(outlineWithReview, /r1 \[review\] Human sign-off/);
   });
-  const provWithReview = text(await call(mermaid, { trace: 'demo', diagram: 'provenance' }));
-  checked('review records are edges in provenance diagrams', () => {
-    assert.match(provWithReview, /f1 --> r1/);
-    assert.match(provWithReview, /r1\{\{"r1: review/);
-  });
   const sessionCtx = { cwd: temporary, sessionManager: { getSessionId: () => 'session-abc' } };
   const stamped = await append.execute('test', { ...base, title: 'Stamped' }, undefined, undefined, sessionCtx);
   checked('append stamps the session id when the host provides one', () => {
@@ -243,32 +240,6 @@ try {
 
   const list = text(await call(query, { action: 'list' }));
   checked('list shows the trace root', () => assert.match(list, /demo/));
-
-  const prov = text(await call(mermaid, { trace: 'demo', diagram: 'provenance' }));
-  checked('provenance diagram renders dependencies', () => {
-    assert.match(prov, /flowchart LR/);
-    assert.match(prov, /e1 --> f2/);
-    assert.match(prov, /e1 --> d2/);
-    assert.doesNotMatch(prov, /Reject Timer0/);
-  });
-  const provAll = text(await call(mermaid, { trace: 'demo', diagram: 'provenance', includeDeadends: true }));
-  checked('provenance includes deadends on request', () => assert.match(provAll, /Reject Timer0/));
-
-  const pathDiagram = text(await call(mermaid, { trace: 'demo', diagram: 'path' }));
-  checked('path diagram renders steps', () => {
-    assert.match(pathDiagram, /read capabilities/);
-    assert.match(pathDiagram, /follow init recipe/);
-  });
-
-  const decisionDiagram = text(await call(mermaid, { trace: 'demo', diagram: 'decision' }));
-  checked('decision diagram links a rejected deadend', () => assert.match(decisionDiagram, /d2 -\.-> x2/));
-
-  await call(mermaid, { trace: 'demo', diagram: 'provenance', write: true });
-  checked('write saves the mmd file', () => {
-    const file = path.join(temporary, '.dev-vault/traces/demo/diagram-provenance.mmd');
-    assert.ok(fs.existsSync(file));
-    assert.match(fs.readFileSync(file, 'utf8'), /flowchart LR/);
-  });
 
   await assert.rejects(() => call(append, { ...base, refs: [] }), /At least one ref/);
   checked('rejects a record with no refs', () => {});
