@@ -1,8 +1,8 @@
 /**
  * Prompt Snippets — mix-and-match single-purpose prompt rules.
  *
- * Each snippet is a markdown file with frontmatter (name, description,
- * placement, order) stored in the `snippets/` directory next to this file.
+ * Snippets can come from the TypeScript prompt catalog or from Markdown
+ * files with frontmatter in the `snippets/` directory next to this file.
  *
  * - Press alt+s or run /snippet (alias: /snippets) to open the toggle menu (space: toggle,
  *   tab: preview, enter: apply, esc: cancel). The menu is a bordered,
@@ -25,6 +25,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { composeSections, tracePromptEnabled } from "../../prompt-catalog/compose.ts";
+import { isSnippetMirror } from "../../prompt-catalog/snippet-mirrors.ts";
+import { snippetCatalog } from "../../prompt-catalog/snippets/catalog.ts";
+import { profileFilteredTools } from "../profiles/tool-availability.ts";
 
 interface Snippet {
 	/** Filename, e.g. "concise.md" */
@@ -80,13 +84,21 @@ function parseSnippet(filename: string, raw: string): Snippet | null {
 }
 
 /** Load all snippets, sorted: prepend group first, append group last, each by (order, name). */
-function loadSnippets(): Snippet[] {
-	if (!existsSync(snippetsDir)) return [];
-	const snippets: Snippet[] = [];
-	for (const file of readdirSync(snippetsDir)) {
-		if (!file.toLowerCase().endsWith(".md")) continue;
+function loadSnippets(includeTrace: boolean): Snippet[] {
+	const snippets: Snippet[] = snippetCatalog.map(({ sections, ...metadata }) => ({
+		...metadata,
+		body: expandTokens(composeSections(sections, includeTrace).trim()),
+	}));
+	const catalogIds = new Set(snippets.map((snippet) => snippet.id));
+	const files = existsSync(snippetsDir) ? readdirSync(snippetsDir) : [];
+	for (const file of files) {
+		// Generated Markdown mirrors are for references and inspection, not delivery.
+		if (catalogIds.has(file) || !file.toLowerCase().endsWith(".md")) continue;
 		try {
-			const snippet = parseSnippet(file, readFileSync(join(snippetsDir, file), "utf8"));
+			const raw = readFileSync(join(snippetsDir, file), "utf8");
+			// A renamed or removed catalog entry can leave an owned mirror behind.
+			if (isSnippetMirror(raw)) continue;
+			const snippet = parseSnippet(file, raw);
 			if (snippet) snippets.push(snippet);
 		} catch {
 			// Skip unreadable files
@@ -100,10 +112,14 @@ function loadSnippets(): Snippet[] {
 }
 
 export default function (pi: ExtensionAPI) {
-	// Snippets last seen on disk (sorted). Refreshed whenever the menu opens or a message is sent.
+	// Available snippets (sorted). Refreshed whenever the menu opens or a message is sent.
 	let snippets: Snippet[] = [];
 	// Ids of currently toggled snippets. Resets to empty after each send and at session start.
 	let enabled = new Set<string>();
+
+	function refreshSnippets() {
+		snippets = loadSnippets(tracePromptEnabled(profileFilteredTools(pi, pi.getActiveTools())));
+	}
 
 	function updateWidget(ctx: ExtensionContext) {
 		if (!ctx.hasUI || ctx.mode !== "tui") return;
@@ -143,13 +159,13 @@ export default function (pi: ExtensionAPI) {
 
 	async function openMenu(ctx: ExtensionContext) {
 		if (!ctx.hasUI || ctx.mode !== "tui") {
-			snippets = loadSnippets();
+			refreshSnippets();
 			output(ctx, usage);
 			printList(ctx);
 			return;
 		}
 
-		snippets = loadSnippets();
+		refreshSnippets();
 		// Drop toggles for snippets that no longer exist on disk.
 		enabled = new Set([...enabled].filter((id) => snippets.some((s) => s.id === id)));
 
@@ -322,7 +338,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		enabled = new Set();
-		snippets = loadSnippets();
+		refreshSnippets();
 		if (!existsSync(snippetsDir)) mkdirSync(snippetsDir, { recursive: true });
 		updateWidget(ctx);
 	});
@@ -330,7 +346,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("input", async (event, ctx) => {
 		if (enabled.size === 0) return; // continue unchanged
 
-		snippets = loadSnippets();
+		refreshSnippets();
 		const active = snippets.filter((s) => enabled.has(s.id));
 		enabled = new Set();
 		updateWidget(ctx);
@@ -362,7 +378,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		snippets = loadSnippets();
+		refreshSnippets();
 		if (argument === "list" || argument === "ls" ) {
 			printList(ctx);
 			return;

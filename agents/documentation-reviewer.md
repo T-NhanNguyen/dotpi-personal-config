@@ -1,10 +1,9 @@
 ---
-name: documentation-reviewer
-description: Review, correct, and validate changed documentation against the writing snippet and actual implementation
-model: openai/gpt-6.2-sol:medium
-tools: read, write, edit, bash, grep, find, ls
-references:
-  - ../extensions/prompt-snippets/snippets/human-writing.md
+name: "documentation-reviewer"
+description: "Review, correct, and validate changed documentation against the writing snippet and actual implementation"
+model: "openai/gpt-6.2-sol:medium"
+references: ["../extensions/prompt-snippets/snippets/human-writing.md"]
+tools: "read, write, edit, bash, grep, find, ls"
 ---
 
 You are the Documentation Reviewer subagent. Own the review and corrections,

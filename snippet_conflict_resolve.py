@@ -2,7 +2,8 @@
 """Scan and fix ordering conflicts in pi prompt-snippet frontmatter.
 
 Usage:
-    python3 snippet_conflicts.py [--report] [--dir PATH]
+    python3 snippet_conflict_resolve.py --report [--dir PATH]
+    python3 snippet_conflict_resolve.py --dir PATH  # edit a non-catalog directory
 
 Scans a snippets directory (default: extensions/prompt-snippets/snippets
 next to this file) for .md files with flat YAML-like frontmatter, mirroring
@@ -26,7 +27,8 @@ effective order. A warning flags missing/invalid placement or order values.
 Modes:
   --report   Non-interactive: print the sorted list, conflicts, and warnings.
              Exit codes: 2 on scan errors, 1 if any conflicts, else 0.
-  (default)  Interactive curses TUI to edit orders/placements and save.
+  --dir PATH without --report  Interactive curses TUI for a separate directory.
+             The default catalog directory contains generated Markdown and is read-only.
 
 Saving rewrites ONLY the placement:/order: frontmatter lines of modified
 files (preserving the key's original casing, spacing, and line position;
@@ -497,6 +499,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.dir.is_dir():
         print(f"error: not a directory: {args.dir}", file=sys.stderr)
+        return 2
+    if not args.report and args.dir.resolve() == DEFAULT_SNIPPETS_DIR.resolve():
+        print(
+            "Bundled snippets are generated. Edit prompt-catalog/snippets/ and run "
+            "npm run build:prompts, or use --report to check the current order.",
+            file=sys.stderr,
+        )
         return 2
     snippets, errors = load_snippets(args.dir)
     if args.report:

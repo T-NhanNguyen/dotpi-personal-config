@@ -1,7 +1,8 @@
 ---
-name: General Programming Guidelines
-description: Language-neutral programming standards grounded in correctness, explicit contracts, project conventions, practical trade-offs, safe testing, and strict task scope. Use when implementing features, reviewing code, or writing scripts.
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "General Programming Guidelines"
+description: "Language-neutral programming standards grounded in correctness, explicit contracts, project conventions, practical trade-offs, safe testing, and strict task scope. Use when implementing features, reviewing code, or writing scripts."
+placement: "append"
 order: 4
 ---
 

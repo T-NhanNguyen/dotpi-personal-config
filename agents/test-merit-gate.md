@@ -1,10 +1,9 @@
 ---
-name: test-merit-gate
-description: Test lead that owns the test context, adjudicates plans, runs tests, and commands test-writer when new tests are needed
-model: openai/gpt-6.2-sol:medium
-tools: read, write, edit, bash, grep, find, ls, subagent, trace_append
-references:
-  - references/test-integrity.md
+name: "test-merit-gate"
+description: "Test lead that owns the test context, adjudicates plans, runs tests, and commands test-writer when new tests are needed"
+model: "openai/gpt-6.2-sol:medium"
+references: ["references/test-integrity.md"]
+tools: "read, write, edit, bash, grep, find, ls, subagent, trace_append"
 ---
 
 # Test Merit Gate

@@ -1,7 +1,8 @@
 ---
-name: Dev Journaling
-description: Establish and maintain a private development journal (Obsidian vault) inside a repo. TOC upkeep every session, markdown-only notes, and gitignore integration so the vault is never committed.
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Dev Journaling"
+description: "Establish and maintain a private development journal (Obsidian vault) inside a repo. TOC upkeep every session, markdown-only notes, and gitignore integration so the vault is never committed."
+placement: "append"
 order: 6
 ---
 

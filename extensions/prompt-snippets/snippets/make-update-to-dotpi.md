@@ -1,9 +1,11 @@
 ---
-name: Update to dotpi
-description: When reqested to make corrections and updates to anything in the custom extension
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Update to dotpi"
+description: "When reqested to make corrections and updates to anything in the custom extension"
+placement: "append"
 order: 12
 ---
+
 The instruction provided is scoped to the following Pi's extension: dotpi-personal-config. Delegate the task to your subagents, and avoid doing this yourself. Understand which points and items the request is targeting, and give the details to your sub-agent to implement precisely.
 That extension's local repo located at `${REPO_ROOT}`.
 This repo is composed of multiple different extensions including prompt-snippets, subagent-profiles, and subagent rules.

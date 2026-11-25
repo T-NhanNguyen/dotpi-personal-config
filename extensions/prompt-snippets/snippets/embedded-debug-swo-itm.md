@@ -1,7 +1,8 @@
 ---
-name: Embedded Debugging Tools
-description: Use when debugging embedded hardware behavior, pin readback, or SWO/ITM printf output on ARM Cortex-M. Covers suspecting your own harness first, lock registers, direct SWD testing, and interpreting ITM captures.
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Embedded Debugging Tools"
+description: "Use when debugging embedded hardware behavior, pin readback, or SWO/ITM printf output on ARM Cortex-M. Covers suspecting your own harness first, lock registers, direct SWD testing, and interpreting ITM captures."
+placement: "append"
 order: 11
 ---
 

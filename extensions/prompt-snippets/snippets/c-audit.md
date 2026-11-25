@@ -1,7 +1,8 @@
 ---
-name: Audit C code to IWYU Standards 
-description: Use when writing, reviewing, or cleaning up C code in this embedded codebase. Covers strict IWYU include audits, uart.c commentary matching led.c, and the C99-compatible subset of the Google style guide.
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Audit C code to IWYU Standards"
+description: "Use when writing, reviewing, or cleaning up C code in this embedded codebase. Covers strict IWYU include audits, uart.c commentary matching led.c, and the C99-compatible subset of the Google style guide."
+placement: "append"
 order: 13
 ---
 

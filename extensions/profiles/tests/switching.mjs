@@ -31,7 +31,7 @@ try {
 	mkdirSync(agentDir);
 	mkdirSync(extra);
 	cpSync(new URL("package.json", repo), join(pkg, "package.json"));
-	for (const file of ["index.ts", "editor.ts", "storage.ts", "provenance.ts"]) {
+	for (const file of ["index.ts", "editor.ts", "storage.ts", "provenance.ts", "tool-availability.ts"]) {
 		cpSync(new URL(`extensions/profiles/${file}`, repo), join(pkg, "extensions", "profiles", file));
 	}
 	cpSync(new URL("profiles", repo), join(pkg, "profiles"), {

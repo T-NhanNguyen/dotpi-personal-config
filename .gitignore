@@ -3,6 +3,7 @@ tmp/
 .DS_Store
 *.log
 .dev-vault/
+/.texts.old/
 .pi/subagent-models.json
 .pi
 __pycache__/

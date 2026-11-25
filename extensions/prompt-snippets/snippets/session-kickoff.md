@@ -1,7 +1,9 @@
 ---
-name: Session kickoff
-description: Get oriented, report back before starting work
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Session kickoff"
+description: "Get oriented, report back before starting work"
+placement: "append"
 order: 7
 ---
+
 Familiarize yourself with this project before we start. Once you have a clear picture, report back. Do not begin any work until we have aligned on what's next.

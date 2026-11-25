@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { editProfile, pickProfile } from "./editor.js";
 import { toolParents, UNAVAILABLE } from "./provenance.js";
+import { registerProfileToolFilter } from "./tool-availability.ts";
 import { activeSelection, createProfile, deleteProfile, GROUPS, listProfileResources, listProfiles, readFilters, readMaskedTools, renameProfile, saveFilters, writeProfile, type Resource } from "./storage.js";
 
 const MAX_COMPOSER_PROFILES = 11; // The twelfth option is None.
@@ -45,21 +46,24 @@ async function publishControl(ctx: ExtensionContext, trusted: boolean, loaded: s
 
 export default function (pi: ExtensionAPI) {
 	let loaded: ReturnType<typeof activeSelection> = { name: undefined, mask: undefined };
-	let disabledTools = new Set<string>();
+	let disabledTools: ReadonlySet<string> | undefined;
 	const removedTools = new Set<string>();
+	registerProfileToolFilter(pi, () => disabledTools);
 
 	function filterTools() {
-		if (!disabledTools.size) return;
+		const disabled = disabledTools;
+		if (!disabled?.size) return;
 		const active = pi.getActiveTools();
-		const kept = active.filter((tool) => !disabledTools.has(tool));
+		const kept = active.filter((tool) => !disabled.has(tool));
 		if (active.length !== kept.length) {
 			pi.setActiveTools(kept);
-			for (const tool of active) if (disabledTools.has(tool)) removedTools.add(tool);
+			for (const tool of active) if (disabled.has(tool)) removedTools.add(tool);
 		}
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
 		const terminal = isTerminal(ctx);
+		disabledTools = undefined;
 		try {
 			const trusted = ctx.isProjectTrusted();
 			loaded = trusted ? activeSelection(ctx.cwd) : { name: undefined, mask: undefined };
@@ -83,8 +87,9 @@ export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!ctx.isProjectTrusted()) return;
 		filterTools();
-		if (event.systemPromptOptions && disabledTools.size) {
-			event.systemPromptOptions.selectedTools = event.systemPromptOptions.selectedTools.filter((tool) => !disabledTools.has(tool));
+		const disabled = disabledTools;
+		if (event.systemPromptOptions && disabled?.size) {
+			event.systemPromptOptions.selectedTools = event.systemPromptOptions.selectedTools.filter((tool) => !disabled.has(tool));
 		}
 		let current: ReturnType<typeof activeSelection>;
 		try {
@@ -101,7 +106,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", (event) => {
-		if (disabledTools.has(event.toolName)) return { block: true, reason: `Disabled in the ${loaded.name} profile.` };
+		if (disabledTools?.has(event.toolName)) return { block: true, reason: `Disabled in the ${loaded.name} profile.` };
 	});
 
 	async function chooseInTerminal(ctx: ExtensionCommandContext) {

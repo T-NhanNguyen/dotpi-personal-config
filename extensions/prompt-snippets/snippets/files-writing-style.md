@@ -1,7 +1,8 @@
 ---
-name: Files Writing Style
-description: Rewrite prose (docs, PRs, reports, error messages, never code) so it reads clearly on the first pass. Use when asked to make writing sound less like AI.
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Files Writing Style"
+description: "Rewrite prose (docs, PRs, reports, error messages, never code) so it reads clearly on the first pass. Use when asked to make writing sound less like AI."
+placement: "append"
 order: 5
 ---
 

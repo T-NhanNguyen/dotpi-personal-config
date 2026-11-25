@@ -16,6 +16,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -31,6 +32,9 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { agentModelArgs, applyModelPreferences, effectivePreferences, registerModelPicker } from "./model-picker.ts";
+import { maskCatalogAgentPrompt, PRELOADED_REFERENCES_HEADING } from "../../prompt-catalog/agent-prompts.ts";
+
+const catalogChildExtension = fileURLToPath(new URL("./catalog-child.ts", import.meta.url));
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -367,7 +371,8 @@ async function runSingleAgent(
 	};
 
 	try {
-		let effectivePrompt = agent.systemPrompt;
+		let effectivePrompt = maskCatalogAgentPrompt(agent.name, agent.systemPrompt);
+		if (effectivePrompt !== agent.systemPrompt) args.push("--extension", catalogChildExtension);
 		if (agent.references?.length) {
 			let base = path.dirname(path.resolve(agent.filePath));
 			let declaredReference = agent.references[0];
@@ -389,8 +394,8 @@ async function runSingleAgent(
 					seen.add(target);
 					sections.push(`### Reference: ${ref}\n${body}\n`);
 				}
-				effectivePrompt +=
-					"\n\n## Preloaded references\nThese references are already loaded into your context. Do not read them with a tool.\n\n" +
+				effectivePrompt += PRELOADED_REFERENCES_HEADING +
+					"These references are already loaded into your context. Do not read them with a tool.\n\n" +
 					sections.join("\n");
 			} catch (error) {
 				currentResult.exitCode = 1;

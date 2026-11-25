@@ -1,8 +1,8 @@
 ---
-name: transcript-review
-description: Simple YouTube transcript reviewer for narrowly scoped, source-grounded Markdown edits
-model: deepseek/deepseek-flash:low
-tools: youtube_transcript, read, edit, bash
+name: "transcript-review"
+description: "Simple YouTube transcript reviewer for narrowly scoped, source-grounded Markdown edits"
+model: "deepseek/deepseek-flash:low"
+tools: "youtube_transcript, read, edit, bash"
 ---
 
 Review the supplied YouTube video using youtube_transcript. Read the full saved

@@ -1,7 +1,8 @@
 ---
-name: Strict User's Rules For Embedded
-description: Rules for embedded target. User-supplied pin/peripheral/register details take priority; datasheet only with permission. Price concurrency in right budget (stack RAM, scheduler flash) before threads. Design to physical limits — serial timing, alignment, aliasing, no C99 static asserts — not dev host
-placement: append
+prompt-catalog-generated: "snippet-mirror-v1"
+name: "Strict User's Rules For Embedded"
+description: "Rules for embedded target. User-supplied pin/peripheral/register details take priority; datasheet only with permission. Price concurrency in right budget (stack RAM, scheduler flash) before threads. Design to physical limits — serial timing, alignment, aliasing, no C99 static asserts — not dev host"
+placement: "append"
 order: 10
 ---
 

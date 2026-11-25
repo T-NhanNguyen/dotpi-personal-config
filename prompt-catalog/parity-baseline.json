@@ -1,0 +1,121 @@
+{
+  "agents": {
+    "code-auditor.md": {
+      "frontmatter": {
+        "name": "code-auditor",
+        "description": "Review, correct, and verify implementation using programming and applicable C audit guidance",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, write, edit, bash, grep, find, ls, subagent, trace_append",
+        "references": [
+          "../extensions/prompt-snippets/snippets/programming-guideline.md"
+        ]
+      },
+      "bodySha256": "f49387ec66cabd232f39cc0109fbd301a5e0fdee10d57632abed73c1f1f5546f"
+    },
+    "documentation-reviewer.md": {
+      "frontmatter": {
+        "name": "documentation-reviewer",
+        "description": "Review, correct, and validate changed documentation against the writing snippet and actual implementation",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, write, edit, bash, grep, find, ls",
+        "references": [
+          "../extensions/prompt-snippets/snippets/human-writing.md"
+        ]
+      },
+      "bodySha256": "f7950312b35f54cc557ea60c6c1d49bfa0b2b2a72ba12246ad7fb82844381b80"
+    },
+    "explore.md": {
+      "frontmatter": {
+        "name": "explore",
+        "description": "Fast read-only codebase reconnaissance with structured findings for the primary agent",
+        "model": "openai/gpt-6.2-sol:low",
+        "tools": "read, grep, find, ls, bash, trace_append"
+      },
+      "bodySha256": "77649dfeab9a1a51239b033c613713abd13665f39dc95ac4270d6d576c9ecc60"
+    },
+    "test-merit-gate.md": {
+      "frontmatter": {
+        "name": "test-merit-gate",
+        "description": "Test lead that owns the test context, adjudicates plans, runs tests, and commands test-writer when new tests are needed",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, write, edit, bash, grep, find, ls, subagent, trace_append",
+        "references": [
+          "references/test-integrity.md"
+        ]
+      },
+      "bodySha256": "3fbec097c629c49c28257cbb04b2008254acbc884f72f06b46923ca6297b3a09"
+    },
+    "test-writer.md": {
+      "frontmatter": {
+        "name": "test-writer",
+        "description": "Design intent-bound test plans for test-merit-gate or the orchestrator, sized to the brief and budget",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, grep, find, ls, bash, trace_append",
+        "references": [
+          "references/test-integrity.md"
+        ]
+      },
+      "bodySha256": "3837a92a746b728afb833172db43c235e4221c40d6690f9c034cd31c28eb06ad"
+    },
+    "transcript-review.md": {
+      "frontmatter": {
+        "name": "transcript-review",
+        "description": "Simple YouTube transcript reviewer for narrowly scoped, source-grounded Markdown edits",
+        "model": "deepseek/deepseek-flash:low",
+        "tools": "youtube_transcript, read, edit, bash"
+      },
+      "bodySha256": "3a76ee0696738b207c2ca27377fecd09da90f9606ddf6779cf8d5de40876071f"
+    },
+    "video-maker.md": {
+      "frontmatter": {
+        "name": "video-maker",
+        "description": "Script-writing and local video specialist with exact-file narration and an audio-review gate before video production",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, write, edit, bash, grep, find, ls"
+      },
+      "bodySha256": "e52dd5e6c04a030401ccff0007f0aee1d42930ac5a8ecef713ba43090979b112"
+    },
+    "worker-alt.md": {
+      "frontmatter": {
+        "name": "worker-alt",
+        "description": "Alternate-provider implementation agent for substantial delegated coding tasks when the primary worker model is rate-limited; same scope and constraints as worker",
+        "disabled": true,
+        "model": "deepseek/deepseek-v4-pro:medium",
+        "tools": "read, write, edit, bash, grep, find, ls"
+      },
+      "bodySha256": "59b971898b300431d7c07bd405e203e6c27b93c7cc223d581698f9a458e2d606"
+    },
+    "worker.md": {
+      "frontmatter": {
+        "name": "worker",
+        "description": "General-purpose implementation agent for substantial delegated coding tasks; can inspect, edit, and write tests autonomously",
+        "model": "openai/gpt-6.2-sol:medium",
+        "tools": "read, write, edit, bash, grep, find, ls, trace_append",
+        "references": [
+          "../extensions/prompt-snippets/snippets/programming-guideline.md",
+          "../extensions/prompt-snippets/snippets/embedded-debug-swo-itm.md"
+        ]
+      },
+      "bodySha256": "02cdc05ecb5f51aeeee2ef00c963a12d0df92151313c4ac5e20935b9d1cb9f59"
+    }
+  },
+  "references": {
+    "test-integrity.md": "cf992752029fb1a4b27202437fee99e724816f45a78816caf8db031d6edba5b9"
+  },
+  "snippetMessages": {
+    "a1": "09cefbb27c4bd4a2658ccb510221b6f6d80d08e304b1bc4a3bbddb6a532640ac",
+    "a2": "6dcc6267e21a8d67fe778aa125527962f5ee653dbc19f0e96001bfec265f2323",
+    "a3": "74762a9baa9ea1209dbe852a38cac7acff29eb195566cfb60469e016a7a6d01d",
+    "a4": "25debfcf90df8aa9f2e159cead5f1b95417b5c8f9df2ff20f0e4a2ead14a3d66",
+    "a5": "82cfcc90f642f341268d5d1d1ca834a61e6fc999b482b7d1144dd140b8afbc90",
+    "a6": "39a969b6dd947a0e3abf6f2b17cd73ea3d7139596fcddd9f2941ac241b362c45",
+    "a7": "2a413006d9fe9bcd6e5a93e30a5f64e8a6fc27f51930a5f25e15f3e46255622c",
+    "a8": "e2bca4fbcc45f4968abff189e1c0d7093f9e18ba1a030947235f1386bff3f389",
+    "a9": "a973ffa13af8d876c0d476960fd77cbc4987b882774da5030f0892d0c9293db2",
+    "a10": "f7298f6d6d74b1bcfeef7a6a479f2f9546533031e03e97dd85e87c50ad26f99f",
+    "a11": "a2a05aa84ab4e4b5e915de0eac48894940bce958d01857fd1c6f493e0b26ac4e",
+    "a12": "38ba4e251e537cf92fad56499803c950e53364987706116499fd40d968573508",
+    "a13": "b685f00c7c12f00379c230a91e0bc748e411a3f8e3831dd908dbe57e73893463"
+  },
+  "snippetListSha256": "a862f0d5b79a0170039d0c71f0ae35a8ef90ff5e7d6d343a01860bf1f4de3826"
+}

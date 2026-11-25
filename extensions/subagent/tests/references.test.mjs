@@ -69,6 +69,7 @@ try {
   // Exercise the saved definition, not a test-authored approximation of its policy.
   const savedVideoMaker = path.resolve(root, '../../agents/video-maker.md');
   fs.symlinkSync(savedVideoMaker, path.join(agentsDir, 'video-maker.md'));
+  fs.symlinkSync(path.resolve(root, '../../agents/worker.md'), path.join(agentsDir, 'worker.md'));
   const discovery = await jiti.import(path.join(root, 'agents.ts'));
   const discovered = discovery.discoverAgents(temporary, 'user').agents;
   checked('discovery trims scalar without comma splitting and filters list metadata', () => {
@@ -126,6 +127,18 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
       assert(videoPrompt.includes(required), `missing saved policy: ${required}`);
     }
     assert(!videoPrompt.includes('--text "'));
+  });
+  const workerResult = await run('worker');
+  const workerPrompt = childOutput(workerResult);
+  const workerChild = JSON.parse(workerResult.details.results[0].messages.at(-1).content[0].text);
+  checked('catalog worker spawns with a masked append file and a child-side adapter', () => {
+    const extensionIndex = workerChild.args.indexOf('--extension');
+    assert(extensionIndex >= 0);
+    assert.equal(workerChild.args[extensionIndex + 1], path.join(root, 'catalog-child.ts'));
+    assert(workerPrompt.includes('You are the Worker subagent.'));
+    assert(workerPrompt.includes('### Reference: ../extensions/prompt-snippets/snippets/programming-guideline.md'));
+    assert(!workerPrompt.includes('Trace triggers:'), 'the initial append is safe even if the adapter cannot run');
+    assert(!videoChild.args.includes('--extension'), 'a role without gated text needs no adapter');
   });
   const scalar = childOutput(await run('scalar'));
   checked('scalar reference is child-visible with frontmatter stripped', () => {

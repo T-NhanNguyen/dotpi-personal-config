@@ -2,6 +2,25 @@
 
 Personal Pi coding-agent configuration packaged as an installable Pi package.
 
+## Prompt catalog
+
+Reusable Markdown sections live in `prompt-catalog/sections/` as named
+TypeScript strings. Entry points import sections and choose their order.
+
+- Start with the [catalog inventory](prompt-catalog/INDEX.md) to find a section,
+  agent, or snippet. Edit the TypeScript source rather than the generated Markdown.
+- Run `npm run build:prompts` (Node 22.18+) and commit the generated Markdown
+  so existing agent discovery, symlinks, and references keep working.
+  `npm run check:prompts` checks for stale output without writing files.
+- Run `/reload` in Pi after editing bundled snippets; the extension imports
+  their TypeScript catalog directly. Additional Markdown snippets may still
+  be loaded from disk if their filename is not already owned by the catalog.
+
+The original files from the migration are archived locally in `.texts.old/`
+and ignored by Git. Run
+`PI_TEST_HOST=/path/to/@earendil-works/pi-coding-agent npm run test:prompts`
+for the prompt catalog and snippet delivery checks.
+
 ## Install
 
 Install from a local checkout:
@@ -144,7 +163,9 @@ formats and agent metadata. The upstream MIT notice is preserved in
 ## prompt-snippets
 
 Press **alt+s** or run **/snippets** to open the menu and toggle prompt rules.
-Snippet files live in `extensions/prompt-snippets/snippets/`.
+Bundled snippets are defined in `prompt-catalog/snippets/`. Their generated
+Markdown mirrors live in `extensions/prompt-snippets/snippets/` for references
+and inspection. Check ordering with `python3 snippet_conflict_resolve.py --report`.
 
 ## Kinetograph (excluded until finished)
 
@@ -198,11 +219,12 @@ not the installation link). It preloads each referenced file's body, excluding
 frontmatter, into the child system prompt. No `read` tool call is needed for
 these references.
 
-Relative paths, including `../`, are allowed. The canonical prompt snippets in
-`extensions/prompt-snippets/snippets/` remain the single source of truth;
-references point to them rather than copying their guidance. Shared agent-only
-references live in `agents/references/`, including `test-integrity.md` for
-`test-writer` and `test-merit-gate`. Absolute paths, URLs, and `~` prefixes are
+Relative paths, including `../`, are allowed. References can point to generated
+Markdown in `extensions/prompt-snippets/snippets/` or `agents/references/`.
+Their source entries are in `prompt-catalog/snippets/` and
+`prompt-catalog/references/`, respectively. For example, `test-writer` and
+`test-merit-gate` preload `agents/references/test-integrity.md`.
+Absolute paths, URLs, and `~` prefixes are
 rejected. A missing or unreadable reference is a hard failure before spawn,
 not a request for the child to find replacement guidance.
 
