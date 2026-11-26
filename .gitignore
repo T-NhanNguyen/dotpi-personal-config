@@ -8,4 +8,4 @@ tmp/
 .pi
 __pycache__/
 harness-improvement-plan/
-/profiles/*/filters.json
+/profiles/
