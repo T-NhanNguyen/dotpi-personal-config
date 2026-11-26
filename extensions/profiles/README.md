@@ -1,20 +1,16 @@
 # Project profiles
 
-Open a trusted project and run `/profile webdev` or `/profile embedded`. In
+Open a trusted project and run `/profile` to select or create a local profile. In
 PiChamber builds that expose `globalThis.pichamber.control`, you can also use the
 **Profile** control in the composer. In the Pi terminal, the footer shows the
 profile this session loaded, including `Profile: None`. Run `/profile` to pick
 from a list, or `/profile none` to remove the profile.
 
-| Profile | Tool | Skill |
-| --- | --- | --- |
-| `webdev` | `http_check` | `web-accessibility` |
-| `embedded` | `serial_ports` | `embedded-c` |
-
-Your existing install of this repo loads the switcher. It finds the packages
-under this checkout's [`profiles/`](../../profiles/) directory, so you don't
-need to copy or link anything into the Pi agent directory. Leave the profile
-packages out of global settings if you want them to load only when selected.
+Your existing install of this repo loads the switcher. It finds local packages
+under this checkout's `profiles/` directory, which is ignored by Git. Fresh
+checkouts do not ship profiles such as `webdev` or `embedded`; existing local
+profiles stay in place. Leave them out of global settings if you want them to
+load only when selected.
 These profiles don't change `/model-profile` or `/subagent-profile`.
 
 ## Manage profiles in the terminal

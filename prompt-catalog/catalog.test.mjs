@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -154,7 +154,7 @@ test("a renamed snippet mirror is checked, never delivered, and pruned without t
 });
 
 test("catalog child uses its own settled tool selection, including the profile mask", async () => {
-	const temp = mkdtempSync(join(tmpdir(), "pi-catalog-child-"));
+	const temp = realpathSync(mkdtempSync(join(tmpdir(), "pi-catalog-child-")));
 	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const agentDir = join(temp, "agent");
 	process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -172,19 +172,32 @@ test("catalog child uses its own settled tool selection, including the profile m
 		mkdirSync(mask, { recursive: true });
 		mkdirSync(join(cwd, ".pi"), { recursive: true });
 		writeFileSync(join(mask, "package.json"), JSON.stringify({ name: "fixture-mask", profileDisabledTools: ["trace_append"] }));
-		const profile = fileURLToPath(new URL("profiles/embedded", repo));
+		// Local profiles are not shipped; recreate the extension's layout in this fixture.
+		const profile = join(temp, "profiles", "embedded");
+		const profileExtensionDir = join(temp, "extensions", "profiles");
+		mkdirSync(profile, { recursive: true });
+		mkdirSync(profileExtensionDir, { recursive: true });
+		writeFileSync(join(profile, "package.json"), JSON.stringify({ name: "fixture-profile", pi: { extensions: [] } }));
+		for (const file of ["index.ts", "editor.ts", "provenance.ts", "storage.ts", "tool-availability.ts"]) {
+			cpSync(new URL(`extensions/profiles/${file}`, repo), join(profileExtensionDir, file));
+		}
 		for (const mode of ["enabled", "profile-masked", "unavailable"]) {
 			writeFileSync(settingsFile, JSON.stringify({ packages: mode === "profile-masked"
 				? [{ source: mask, autoload: false }, { source: profile, autoload: false }]
 				: [] }));
 			const settingsManager = SettingsManager.create(cwd, agentDir);
 			settingsManager.setProjectTrusted(true);
-			const additionalExtensionPaths = ["extensions/subagent/catalog-child.ts", "extensions/prompt-snippets/index.ts", "extensions/profiles/index.ts"];
-			if (mode !== "unavailable") additionalExtensionPaths.push("extensions/traces/index.ts");
+			const fromRepo = (entry) => fileURLToPath(new URL(entry, repo));
+			const additionalExtensionPaths = [
+				fromRepo("extensions/subagent/catalog-child.ts"),
+				fromRepo("extensions/prompt-snippets/index.ts"),
+				join(profileExtensionDir, "index.ts"),
+			];
+			if (mode !== "unavailable") additionalExtensionPaths.push(fromRepo("extensions/traces/index.ts"));
 			const loader = new DefaultResourceLoader({
 				cwd, agentDir, settingsManager, noExtensions: true, noSkills: true,
 				appendSystemPrompt: [masked + references],
-				additionalExtensionPaths: additionalExtensionPaths.map((entry) => fileURLToPath(new URL(entry, repo))),
+				additionalExtensionPaths,
 			});
 			await loader.reload();
 			const { extensions, errors } = loader.getExtensions();
