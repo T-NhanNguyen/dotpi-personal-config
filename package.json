@@ -17,8 +17,7 @@
 	],
 	"pi": {
 		"extensions": [
-			"extensions/*/index.ts",
-			"!extensions/kinetograph/index.ts"
+			"extensions/*/index.ts"
 		],
 		"skills": ["skills"]
 	},

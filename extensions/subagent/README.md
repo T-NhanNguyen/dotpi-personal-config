@@ -22,7 +22,7 @@ Built-in profiles:
 | `muse` | Muse Spark 1.3 Contributor |
 | `gpt` | GPT 6.2 Sol |
 | `deepseek` | Per agent: `deepseek-v4-pro:high` for code-auditor and test-merit-gate; `deepseek-flash` with inherited thinking for the rest |
-| `kimi` | Per agent: `k3-256k:high` for code-auditor and test-merit-gate; `kimi-for-coding:high` for test-writer, video-maker and worker; `kimi-for-coding` with child thinking defaults for documentation-reviewer, transcript-review and explore |
+| `kimi` | Per agent: `k3-256k:high` for code-auditor and test-merit-gate; `kimi-for-coding:high` for test-writer and worker; `kimi-for-coding` with child thinking defaults for documentation-reviewer, transcript-review and explore |
 
 - `/subagent-profile` lists profiles and the current selection.
 - `/subagent-profile clear` returns this session to configured defaults.

@@ -66,15 +66,6 @@
       },
       "bodySha256": "3a76ee0696738b207c2ca27377fecd09da90f9606ddf6779cf8d5de40876071f"
     },
-    "video-maker.md": {
-      "frontmatter": {
-        "name": "video-maker",
-        "description": "Script-writing and local video specialist with exact-file narration and an audio-review gate before video production",
-        "model": "openai/gpt-6.2-sol:medium",
-        "tools": "read, write, edit, bash, grep, find, ls"
-      },
-      "bodySha256": "e52dd5e6c04a030401ccff0007f0aee1d42930ac5a8ecef713ba43090979b112"
-    },
     "worker-alt.md": {
       "frontmatter": {
         "name": "worker-alt",

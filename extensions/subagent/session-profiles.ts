@@ -21,7 +21,6 @@ export const BUILTIN_PROFILES: Record<string, ProfileDefinition> = {
 		"documentation-reviewer": "deepseek/deepseek-flash:inherit",
 		"test-writer": "deepseek/deepseek-flash:inherit",
 		"transcript-review": "deepseek/deepseek-flash:inherit",
-		"video-maker": "deepseek/deepseek-flash:inherit",
 	},
 	kimi: {
 		"code-auditor": "kimi-coding/k3-256k:high",
@@ -30,7 +29,6 @@ export const BUILTIN_PROFILES: Record<string, ProfileDefinition> = {
 		"transcript-review": "kimi-coding/kimi-for-coding",
 		explore: "kimi-coding/kimi-for-coding",
 		"test-writer": "kimi-coding/kimi-for-coding:high",
-		"video-maker": "kimi-coding/kimi-for-coding:high",
 		worker: "kimi-coding/kimi-for-coding:high",
 	},
 };

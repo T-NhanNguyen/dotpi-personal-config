@@ -74,15 +74,12 @@ override reference loading (see below).
 
 ## What loads
 
-All bundled extensions are auto-loaded, with one exception. `extensions/prompt-snippets/` and
+Bundled extensions are auto-loaded. `extensions/prompt-snippets/` and
 `extensions/subagent/` work without extra setup. `extensions/model-profiles/` does
-nothing until you run `/model-profile`. `extensions/kinetograph/` ships in the
-repository but is excluded from the package manifest
-(`!extensions/kinetograph/index.ts` in `package.json`) while the feature is
-unfinished, so installs neither load it nor install its npm dependency.
+nothing until you run `/model-profile`.
 
 The [project profile switcher](extensions/profiles/README.md) loads with this
-package. Its demo tools and skills stay off until you pick a profile.
+package. Local `profiles/` are ignored by Git and are not shipped.
 
 ## Layout
 
@@ -101,11 +98,6 @@ dotpi-personal-config/
 │   │   ├── model-picker.ts
 │   │   ├── README.md
 │   │   └── tests/
-│   ├── kinetograph/ (optional)
-│   │   ├── index.ts
-│   │   ├── runtime.ts
-│   │   ├── README.md
-│   │   └── tests/
 │   └── model-profiles/ (optional)
 │       ├── index.ts
 │       ├── store.ts
@@ -119,7 +111,6 @@ dotpi-personal-config/
     ├── transcript-review.md
     ├── documentation-reviewer.md
     ├── code-auditor.md
-    ├── video-maker.md
     └── references/
         └── test-integrity.md
 ```
@@ -135,15 +126,12 @@ dotpi-personal-config/
 
 Pi supports conventional resource discovery when there is no `pi` manifest.
 This package uses an explicit manifest: `pi.extensions` includes
-`extensions/*/index.ts` and excludes `extensions/kinetograph/index.ts`, so new
-extension directories with an `index.ts` entry point are picked up unless
-excluded. `pi.skills` explicitly includes `skills`, loading the skill directories
+`extensions/*/index.ts`, so new extension directories with an `index.ts` entry
+point are picked up. `pi.skills` explicitly includes `skills`, loading the skill directories
 under `skills/` (currently `caveman`, `code-review`, `domain-modeling`, `grilling`,
 `grill-with-docs`, and `handoff`). Prompts
 and themes must be declared in the manifest when added; their conventional
 paths above are not automatically loaded by this explicit manifest.
-The Kinetograph extension dynamically loads its selected runtime's matching skill
-(local fork preferred; installed dependency fallback) when enabled.
 Run `/reload` in an active Pi session to refresh resources, then use
 `/skill:caveman`, `/skill:code-review`, `/skill:grill-with-docs`, or
 `/skill:handoff` to load a skill explicitly.
@@ -166,31 +154,6 @@ Press **alt+s** or run **/snippets** to open the menu and toggle prompt rules.
 Bundled snippets are defined in `prompt-catalog/snippets/`. Their generated
 Markdown mirrors live in `extensions/prompt-snippets/snippets/` for references
 and inspection. Check ordering with `python3 snippet_conflict_resolve.py --report`.
-
-## Kinetograph (excluded until finished)
-
-Kinetograph is **not loaded** right now: the package manifest excludes it, and
-its npm dependency is removed, so a plain install never resolves or warns about
-it. To develop it locally, remove the `!extensions/kinetograph/index.ts`
-exclusion from `package.json` and restore the `kinetograph` dependency.
-
-Kinetograph adds video creation tools. The rest of this package works without
-it.
-
-To enable it, follow the [canonical Kinetograph setup, rebuild, and reconnect procedure](extensions/kinetograph/README.md).
-It covers Node 22+, dependency authorization, preserving the unpublished local
-integration, environment setup **before launching Pi**, existing agent links,
-`/mcp` overrides, discovery-only `tool_search`, and focused verification commands.
-`/reload` does not import environment changes from another shell.
-
-The extension pairs the selected CLI with its matching `/skill:kinetograph`.
-audio.cpp narration is a second optional layer on top of the video tools. A
-built sibling fork (or `KINETOGRAPH_FORK_ROOT`) adds exact-file audio.cpp
-narration. The installed upstream fallback has **no `audio_narrate`**; the
-`video-maker` agent must stop narration if the fork is missing. Plain upstream
-clones cannot recover the unpublished integration: preserve its branch/patch
-and uncommitted files. The agent requires script and sound-sample approval
-before video production and uses that same approved WAV in the video.
 
 ## Bundled agents
 

@@ -66,9 +66,6 @@ try {
   fs.writeFileSync(path.join(agentsDir, 'parked.md'), '---\nname: parked\ndescription: Parked agent\ndisabled: true\n---\nParked.\n');
   fs.writeFileSync(path.join(agentsDir, 'active.md'), '---\nname: active\ndescription: Active agent\n---\nActive.\n');
 
-  // Exercise the saved definition, not a test-authored approximation of its policy.
-  const savedVideoMaker = path.resolve(root, '../../agents/video-maker.md');
-  fs.symlinkSync(savedVideoMaker, path.join(agentsDir, 'video-maker.md'));
   fs.symlinkSync(path.resolve(root, '../../agents/worker.md'), path.join(agentsDir, 'worker.md'));
   const discovery = await jiti.import(path.join(root, 'agents.ts'));
   const discovered = discovery.discoverAgents(temporary, 'user').agents;
@@ -105,29 +102,6 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
     assert(!fs.existsSync(output.promptPath), 'temporary prompt is cleaned up after spawn');
     return output.prompt;
   };
-  const videoTask = 'Prepare a local video about a paper airplane.';
-  const videoResult = await execute({ agent: 'video-maker', task: videoTask });
-  const videoPrompt = childOutput(videoResult);
-  const videoChild = JSON.parse(videoResult.details.results[0].messages.at(-1).content[0].text);
-  const videoDefinition = discovered.find(a => a.name === 'video-maker');
-  checked('actual saved video-maker is user-discovered and passed verbatim to a sessionless allowlisted child', () => {
-    assert.equal(videoDefinition.source, 'user');
-    assert.equal(fs.realpathSync(videoDefinition.filePath), savedVideoMaker);
-    assert.equal(videoResult.details.results[0].agentSource, 'user');
-    assert.equal(videoPrompt, videoDefinition.systemPrompt);
-    assert(videoChild.args.includes('--no-session'));
-    assert.equal(videoChild.args[videoChild.args.indexOf('--tools') + 1], 'read,write,edit,bash,grep,find,ls');
-    assert.equal(videoChild.args.at(-1), `Task: ${videoTask}`);
-    assert.equal(videoDefinition.model, 'openai/gpt-6.2-sol:medium');
-  });
-  checked('saved video-maker supplies integration policy without corrective task text', () => {
-    assert(!/fork|narrat|MCP|audio/i.test(videoTask));
-    assert(!/placeholder specialist|definition is a placeholder/i.test(videoPrompt));
-    for (const required of ['realpath', 'KINETOGRAPH_FORK_ROOT', 'AUDIOCPP_ROOT', 'audio-v0.9.0-bin-macos-arm64-metal', 'BEFORE narration', 'STOP narration', '.local-cli/cli.mjs', 'audio narrate "$narration_file"', 'UTF-8', 'SAME successful WAV', 'Do not guess MCP calls', 'before creating the composition', 'raw audiocpp_cli fallback']) {
-      assert(videoPrompt.includes(required), `missing saved policy: ${required}`);
-    }
-    assert(!videoPrompt.includes('--text "'));
-  });
   const workerResult = await run('worker');
   const workerPrompt = childOutput(workerResult);
   const workerChild = JSON.parse(workerResult.details.results[0].messages.at(-1).content[0].text);
@@ -138,7 +112,6 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
     assert(workerPrompt.includes('You are the Worker subagent.'));
     assert(workerPrompt.includes('### Reference: ../extensions/prompt-snippets/snippets/programming-guideline.md'));
     assert(!workerPrompt.includes('Trace triggers:'), 'the initial append is safe even if the adapter cannot run');
-    assert(!videoChild.args.includes('--extension'), 'a role without gated text needs no adapter');
   });
   const scalar = childOutput(await run('scalar'));
   checked('scalar reference is child-visible with frontmatter stripped', () => {
@@ -159,8 +132,13 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
     assert(!duplicates.includes('### Reference: alias.md'));
   });
   for (const name of ['plain', 'empty']) {
-    const prompt = childOutput(await run(name));
-    checked(`${name} references preserve exact original prompt`, () => assert.equal(prompt, discovered.find(a => a.name === name).systemPrompt));
+    const result = await run(name);
+    const prompt = childOutput(result);
+    checked(`${name} references preserve the original prompt without a catalog adapter`, () => {
+      const child = JSON.parse(result.details.results[0].messages.at(-1).content[0].text);
+      assert(!child.args.includes('--extension'));
+      assert.equal(prompt, discovered.find(a => a.name === name).systemPrompt);
+    });
   }
   const spawnCount = () => fs.readFileSync(spawns, 'utf8').trim().split('\n').length;
   for (const [name, declared, cause] of [

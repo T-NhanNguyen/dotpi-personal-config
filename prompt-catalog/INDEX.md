@@ -18,7 +18,6 @@ Snippet mirrors carry the reserved `prompt-catalog-generated: "snippet-mirror-v1
 | [`test-merit-gate.agent.ts`](agents/test-merit-gate.agent.ts) | [`test-merit-gate.ts`](sections/test-merit-gate.ts) | `testGateRole`, `testGateContext`, `testGatePlanReview`, `testGateExecution`, `testGateOutput` |
 | [`test-writer.agent.ts`](agents/test-writer.agent.ts) | [`test-writer.ts`](sections/test-writer.ts) | `testWriterRole`, `testWriterScope`, `testWriterWorkflow`, `testWriterOutput` |
 | [`transcript-review.agent.ts`](agents/transcript-review.agent.ts) | [`transcript-review.ts`](sections/transcript-review.ts) | `transcriptReviewInstructions` |
-| [`video-maker.agent.ts`](agents/video-maker.agent.ts) | [`video-maker.ts`](sections/video-maker.ts) | `videoMakerRole`, `localNarrationIntegration`, `narrationApprovalGate` |
 | [`worker.agent.ts`](agents/worker.agent.ts) | [`worker.ts`](sections/worker.ts) | `workerRole`, `workerResponsibilities`, `workerHandoff` |
 | [`worker-alt.agent.ts`](agents/worker-alt.agent.ts) | [`worker-alt.ts`](sections/worker-alt.ts) | `alternateWorkerRole`, `alternateWorkerResponsibilities`, `alternateWorkerHandoff` |
 
