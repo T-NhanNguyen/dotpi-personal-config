@@ -244,6 +244,20 @@ Example requests to Pi:
 - “Ask code-auditor to review, fix, and verify my uncommitted changes using the
   authoritative package root `/path/to/dotpi-personal-config`.”
 
+## Update this package from another project
+
+Run `/skill:update-dotpi <change request>` in any Pi session where this package's
+skills are enabled. For example:
+
+```text
+/skill:update-dotpi add a profile rename example to the profiles README
+```
+
+The skill locates this package from its own installed path, verifies the target
+checkout, and delegates the requested change there—not in your current project.
+This replaces the **Update to dotpi** snippet (`/snippet a12`). Run `/reload`
+in existing sessions to discover the new skill. No `/update-dotpi` alias is added.
+
 ## Development loop
 
 Edit files in this repository, then run `/reload` in Pi to reload resources

@@ -5,7 +5,6 @@ import diagnoseReport from "./diagnose-report.ts";
 import embedSysWorker from "./embedSys-worker.ts";
 import embeddedDebugSwoItm from "./embedded-debug-swo-itm.ts";
 import filesWritingStyle from "./files-writing-style.ts";
-import makeUpdateToDotpi from "./make-update-to-dotpi.ts";
 import orchestratorMode from "./orchestrator-mode.ts";
 import programmingGuideline from "./programming-guideline.ts";
 import responseInstruction from "./response-instruction.ts";
@@ -20,7 +19,6 @@ export const snippetCatalog = [
 	embedSysWorker,
 	embeddedDebugSwoItm,
 	filesWritingStyle,
-	makeUpdateToDotpi,
 	orchestratorMode,
 	programmingGuideline,
 	responseInstruction,

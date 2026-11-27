@@ -12,7 +12,7 @@ import { composeSections } from "./compose.ts";
 
 const host = process.env.PI_TEST_HOST;
 if (!host) throw new Error("Set PI_TEST_HOST to the installed @earendil-works/pi-coding-agent directory.");
-const { createAgentSession, DefaultResourceLoader, parseFrontmatter, SessionManager, SettingsManager } =
+const { createAgentSession, DefaultResourceLoader, loadSkills, parseFrontmatter, SessionManager, SettingsManager } =
 	await import(pathToFileURL(resolve(host, "dist/index.js")).href);
 const repo = new URL("../", import.meta.url);
 const digest = (text) => createHash("sha256").update(text).digest("hex");
@@ -34,7 +34,28 @@ test("all agent definitions and the shared reference preserve Pi-parsed metadata
 	}
 });
 
-test("Pi compiles the snippet catalog and preserves all 13 snippet codes and one-shot messages", async () => {
+test("update-dotpi is discoverable from an unrelated project as a portable native skill", () => {
+	const temp = mkdtempSync(join(tmpdir(), "pi-update-dotpi-skill-"));
+	try {
+		const skillPath = fileURLToPath(new URL("skills/update-dotpi", repo));
+		const { skills, diagnostics } = loadSkills({
+			cwd: temp, agentDir: temp, skillPaths: [skillPath], includeDefaults: false,
+		});
+		assert.deepEqual(diagnostics, []);
+		assert.equal(skills.length, 1);
+		assert.equal(skills[0].name, "update-dotpi");
+		assert.equal(skills[0].disableModelInvocation, false);
+		assert.equal(realpathSync(skills[0].filePath), realpathSync(join(skillPath, "SKILL.md")));
+		assert.equal(realpathSync(resolve(skills[0].baseDir, "../..")), realpathSync(fileURLToPath(repo)));
+		const { body } = parseFrontmatter(readFileSync(skills[0].filePath, "utf8"));
+		assert.match(body, /Text after `\/skill:update-dotpi` is the change request/);
+		assert.doesNotMatch(body, /\$\{REPO_ROOT\}/, "skills do not expand snippet placeholders");
+	} finally {
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("Pi compiles the snippet catalog and preserves the remaining 12 snippet codes and one-shot messages", async () => {
 	const temp = mkdtempSync(join(tmpdir(), "pi-prompt-catalog-"));
 	let session;
 	try {
@@ -60,6 +81,9 @@ test("Pi compiles the snippet catalog and preserves all 13 snippet codes and one
 		const event = { text: "Check this." };
 		await command("list", ctx);
 		assert.equal(digest(notices.pop()), baseline.snippetListSha256, "snippet list (includes order, names and descriptions)");
+		assert.equal(await input(event, ctx), undefined);
+		await command("a12", ctx);
+		assert.ok(notices.some((text) => /Unknown snippet code: a12/.test(text)), "the old update snippet is retired");
 		assert.equal(await input(event, ctx), undefined);
 		for (const [code, expected] of Object.entries(baseline.snippetMessages)) {
 			await command(code, ctx);

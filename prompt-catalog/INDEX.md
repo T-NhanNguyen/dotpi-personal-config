@@ -32,12 +32,13 @@ Snippet mirrors carry the reserved `prompt-catalog-generated: "snippet-mirror-v1
 | [`embedSys-worker.ts`](snippets/embedSys-worker.ts) | [`embedSys-worker.ts`](sections/embedSys-worker.ts) | `requireTargetDetails`, `justifyEmbeddedDesign`, `embeddedImplementationChecklist` |
 | [`embedded-debug-swo-itm.ts`](snippets/embedded-debug-swo-itm.ts) | [`embedded-debug-swo-itm.ts`](sections/embedded-debug-swo-itm.ts) | `embeddedDebuggingProcedure` |
 | [`files-writing-style.ts`](snippets/files-writing-style.ts) | [`files-writing-style.ts`](sections/files-writing-style.ts) | `humanWritingPrinciple`, `humanWritingRules`, `humanWritingModes` |
-| [`make-update-to-dotpi.ts`](snippets/make-update-to-dotpi.ts) | [`make-update-to-dotpi.ts`](sections/make-update-to-dotpi.ts) | `updateDotpiWorkflow` |
 | [`orchestrator-mode.ts`](snippets/orchestrator-mode.ts) | [`orchestration.ts`](sections/orchestration.ts) | `verifyCriticalFacts`, `delegateSelectively`, `stopOnSubagentError`, `traceHandoff` |
 | [`programming-guideline.ts`](snippets/programming-guideline.ts) | [`programming-guideline.ts`](sections/programming-guideline.ts) | `engineeringPhilosophy`, `projectScope`, `contractsAndEffects`, `structureAndIdioms`, `commentsAndDocumentation`, `testingAndVerification` |
 | [`response-instruction.ts`](snippets/response-instruction.ts) | [`response-instruction.ts`](sections/response-instruction.ts) | `explainMissingLink`, `responseVoice`, `terminologyAndCorrection` |
 | [`seed-before-implementing.ts`](snippets/seed-before-implementing.ts) | [`seed-before-implementing.ts`](sections/seed-before-implementing.ts) | `seedPurpose`, `seedLoop`, `seedReportShape`, `seedConstraints` |
 | [`session-kickoff.ts`](snippets/session-kickoff.ts) | [`session-kickoff.ts`](sections/session-kickoff.ts) | `sessionKickoffChecklist` |
+
+The former **Update to dotpi** snippet (`a12`) is now the native [`update-dotpi` skill](../skills/update-dotpi/SKILL.md). Use `/skill:update-dotpi <change request>` from any project where this package's skills are enabled. Other snippet codes are unchanged.
 
 ### Preloaded references
 
