@@ -1,8 +1,8 @@
 # Prompt Snippets
 
-Mix-and-match single-purpose prompt rules that are prepended or appended to
-your message when you send it. Unlike skills, each snippet is a tiny,
-standalone instruction — toggle exactly the ones you want per message.
+Mix-and-match single-purpose prompt rules for the next model-facing submission.
+Unlike skills, each snippet is a tiny, standalone instruction — toggle exactly
+the ones you want for that submission.
 
 ## Usage
 
@@ -17,13 +17,20 @@ standalone instruction — toggle exactly the ones you want per message.
 - Active snippets show up as a widget above the editor:
   - `↑ prepend: ...` (accent color) — inserted before your message
   - `↓ append: ...` (warning color) — inserted after your message
-- When you send a message, active snippet bodies are merged into the message
-  text: prepend group (sorted by `order`) → your text → append group (sorted
-  by `order`), separated by blank lines. Your typed text is wrapped in
-  `<user_inquiry>` tags so the query stays visually distinct from the snippet
-  bodies sitting on either side. Messages sent with no snippets enabled are
-  left untouched.
-- Toggles reset to **all off** after each send and at session start.
+- For an ordinary message, the first model request keeps the existing layout:
+  prepend group → your text wrapped in `<user_inquiry>` → append group. Pi
+  expands native `/skill:name` commands and prompt templates before snippets
+  are attached, so the fence contains the expanded text.
+- A custom submission, including a `/loop` wake, gets a separate
+  `<prompt_snippets>` text block before its original content. The prepend group
+  comes first, then the append group; both retain their usual ordering. The
+  literal slash command is not sent. This also works when the wake is delivered
+  as steering during a run.
+- Toggles reset to **all off** when the snippets attach and at session start.
+  Commands that do not submit a message to the model leave snippets queued.
+  Snippets are not written into the session transcript and are not attached to
+  later requests (including tool continuations, retries, or subsequent wakes)
+  unless you select them again.
 
 ## Snippet files
 
@@ -47,5 +54,6 @@ Keep your response concise. Skip preamble and unnecessary explanation.
 | `placement` | no | `prepend` or `append` (default: `append`) |
 | `order` | no | Number; sorts snippets within their group, in the menu and in the applied text (default: `9999`, ties broken by name) |
 
-Files are re-scanned every time the menu opens and every time a message is
-sent, so edits take effect immediately — no `/reload` needed.
+Files are re-scanned when the menu opens and when selected snippets are about
+to attach, so edits take effect immediately — no `/reload` needed for snippet
+body edits.

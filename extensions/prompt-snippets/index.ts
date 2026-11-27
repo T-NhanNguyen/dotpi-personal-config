@@ -9,12 +9,9 @@
  *   scrollable view.
  * - Active snippets appear as a widget above the editor, with prepend and
  *   append groups visually distinguished.
- * - When a message is sent, active snippet bodies are prepended/appended to
- *   the message text in order (prepend group sorted by `order` first, then
- *   the typed text wrapped in <user_inquiry> tags, then the append group
- *   sorted by `order`). The fence keeps the query distinguishable from the
- *   snippet bodies no matter which side they land on.
- * - Toggles reset to all-off after each send and at session start.
+ * - Active snippets accompany the first model request for the next user or
+ *   custom submission, after Pi has expanded skills and prompt templates.
+ * - Toggles reset to all-off after attachment and at session start.
  * - Snippet bodies may use ${REPO_ROOT}, which expands to this package's root
  *   directory at load time. It is derived from this file's location, so the
  *   package works wherever `pi install` places it, with no configuration.
@@ -23,7 +20,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isDeepStrictEqual } from "node:util";
+import type { ContextWithSystemEvent, ExtensionAPI, ExtensionContext, MessageStartEvent } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { composeSections, tracePromptEnabled } from "../../prompt-catalog/compose.ts";
 import { isSnippetMirror } from "../../prompt-catalog/snippet-mirrors.ts";
@@ -58,6 +56,32 @@ function expandTokens(text: string): string {
 	return text.replace(/\$\{(\w+)\}/g, (raw, name: string) => TOKENS[name] ?? raw);
 }
 const WIDGET_ID = "prompt-snippets";
+
+type UserSubmission = Extract<MessageStartEvent["message"], { role: "user" }>;
+type CustomSubmission = Extract<MessageStartEvent["message"], { role: "custom" }>;
+type Submission = { role: "user"; message: UserSubmission }
+	| { role: "custom"; message: CustomSubmission; previousLeafId: string | null };
+
+function findCustomSubmissionIndex(
+	target: Extract<Submission, { role: "custom" }>,
+	messages: ContextWithSystemEvent["messages"],
+	sessionManager: ExtensionContext["sessionManager"],
+): number {
+	// Pi persists this custom message after message_start and rebuilds request
+	// context from the session, assigning it the entry's timestamp, not the live one.
+	const projection = sessionManager.buildSessionProjection();
+	const boundary = projection.entries.findIndex(({ sourceEntry }) => sourceEntry.id === target.previousLeafId);
+	if (target.previousLeafId !== null && boundary === -1) return -1;
+	const entry = projection.entries.slice(boundary + 1).find(({ sourceEntry }) =>
+		sourceEntry.type === "message" || sourceEntry.type === "custom_message");
+	if (entry?.sourceEntry.type !== "custom_message" || entry.sourceEntry.customType !== target.message.customType
+		|| !isDeepStrictEqual(entry.sourceEntry.content, target.message.content)) return -1;
+
+	// Use the entry's projected slot so identical history is never a fallback target.
+	const index = projection.messages.indexOf(entry.messages[0]);
+	return index >= 0 && messages.length === projection.messages.length
+		&& isDeepStrictEqual(messages[index], entry.messages[0]) ? index : -1;
+}
 
 function parseSnippet(filename: string, raw: string): Snippet | null {
 	const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
@@ -114,8 +138,9 @@ function loadSnippets(includeTrace: boolean): Snippet[] {
 export default function (pi: ExtensionAPI) {
 	// Available snippets (sorted). Refreshed whenever the menu opens or a message is sent.
 	let snippets: Snippet[] = [];
-	// Ids of currently toggled snippets. Resets to empty after each send and at session start.
+	// IDs of snippets queued for the next submission, not bound to any command or loop.
 	let enabled = new Set<string>();
+	let submission: Submission | undefined;
 
 	function refreshSnippets() {
 		snippets = loadSnippets(tracePromptEnabled(profileFilteredTools(pi, pi.getActiveTools())));
@@ -338,30 +363,61 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		enabled = new Set();
+		submission = undefined;
 		refreshSnippets();
 		if (!existsSync(snippetsDir)) mkdirSync(snippetsDir, { recursive: true });
 		updateWidget(ctx);
 	});
 
-	pi.on("input", async (event, ctx) => {
-		if (enabled.size === 0) return; // continue unchanged
+	pi.on("message_start", ({ message }, ctx) => {
+		// Pi emits this for both idle starts and delivered steering/follow-up messages.
+		// Commands that only append custom history do not emit this extension event.
+		if (enabled.size === 0 || submission) return;
+		if (message.role === "user") submission = { role: "user", message };
+		else if (message.role === "custom") {
+			submission = { role: "custom", message, previousLeafId: ctx.sessionManager.getLeafId() };
+		}
+	});
+
+	pi.on("agent_settled", () => {
+		// An abort can settle the run before the recorded message reaches a request.
+		submission = undefined;
+	});
+
+	pi.on("context_with_system", (event, ctx) => {
+		const target = submission;
+		submission = undefined;
+		if (!target) return;
+
+		// Look in the new batch for user submissions; replayed custom history may
+		// also be in this suffix, so custom submissions use a session-entry boundary.
+		const lastAssistant = event.messages.findLastIndex((message) => message.role === "assistant");
+		const index = target.role === "custom"
+			? findCustomSubmissionIndex(target, event.messages, ctx.sessionManager)
+			: event.messages.findIndex((message, i) => i > lastAssistant && message.role === "user"
+				&& message.timestamp === target.message.timestamp && isDeepStrictEqual(message.content, target.message.content));
+		if (index <= lastAssistant) return;
+		const message = event.messages[index];
+		if (message?.role !== "user" && message?.role !== "custom") return;
 
 		refreshSnippets();
 		const active = snippets.filter((s) => enabled.has(s.id));
-		enabled = new Set();
+		if (active.length > 0 && message.role === "user") {
+			const prependBodies = active.filter((s) => s.placement === "prepend").map((s) => s.body);
+			const appendBodies = active.filter((s) => s.placement === "append").map((s) => s.body);
+			const [first, ...rest] = message.content;
+			const inquiry = `<user_inquiry>\n${first?.type === "text" ? first.text : ""}\n</user_inquiry>`;
+			const text = [...prependBodies, inquiry, ...appendBodies].join("\n\n");
+			event.messages[index] = { ...message, content: [{ type: "text", text }, ...(first?.type === "text" ? rest : message.content)] };
+		} else if (active.length > 0 && message.role === "custom") {
+			const text = `<prompt_snippets>\n${active.map((s) => s.body).join("\n\n")}\n</prompt_snippets>`;
+			const content = typeof message.content === "string" ? [{ type: "text" as const, text: message.content }] : message.content;
+			event.messages[index] = { ...message, content: [{ type: "text", text }, ...content] };
+		}
+
+		enabled.clear();
 		updateWidget(ctx);
-
-		if (active.length === 0) return; // all toggled snippets vanished from disk
-
-		const prependBodies = active.filter((s) => s.placement === "prepend").map((s) => s.body);
-		const appendBodies = active.filter((s) => s.placement === "append").map((s) => s.body);
-		// Fence the typed query so it stays distinguishable from snippet bodies,
-		// whichever side they land on. Plain messages (no snippets) are untouched.
-		const inquiry = `<user_inquiry>\n${event.text}\n</user_inquiry>`;
-		return {
-			action: "transform",
-			text: [...prependBodies, inquiry, ...appendBodies].join("\n\n"),
-		};
+		if (active.length > 0) return { messages: event.messages };
 	});
 
 	pi.registerShortcut("alt+s", {

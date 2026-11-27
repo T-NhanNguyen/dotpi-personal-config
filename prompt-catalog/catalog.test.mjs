@@ -14,10 +14,42 @@ const host = process.env.PI_TEST_HOST;
 if (!host) throw new Error("Set PI_TEST_HOST to the installed @earendil-works/pi-coding-agent directory.");
 const { createAgentSession, DefaultResourceLoader, loadSkills, parseFrontmatter, SessionManager, SettingsManager } =
 	await import(pathToFileURL(resolve(host, "dist/index.js")).href);
+const { createAssistantMessageEventStream, getModel } =
+	await import(pathToFileURL(resolve(host, "../pi-ai/dist/compat.js")).href);
 const repo = new URL("../", import.meta.url);
 const digest = (text) => createHash("sha256").update(text).digest("hex");
 const baseline = JSON.parse(readFileSync(new URL("./parity-baseline.json", import.meta.url), "utf8"));
 const markdownFiles = (directory) => readdirSync(new URL(directory, repo)).filter((name) => name.endsWith(".md")).sort();
+const userText = (messages) => messages.filter(({ role }) => role === "user")
+	.flatMap(({ content }) => content.filter(({ type }) => type === "text").map(({ text }) => text));
+
+// Use the actual Pi prompt, queue and context pipeline, stopping at the model transport.
+async function createOfflineSession(temp, loader, onRequest) {
+	const model = getModel("anthropic", "claude-sonnet-4-5");
+	const { session } = await createAgentSession({
+		cwd: temp, agentDir: temp, model, resourceLoader: loader, sessionManager: SessionManager.inMemory(temp),
+		settingsManager: SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } }),
+	});
+	try {
+		await session.modelRuntime.setRuntimeApiKey(model.provider, "fixture-key");
+		session.agent.streamFunction = async (_model, context) => {
+			await onRequest(context.messages);
+			const stream = createAssistantMessageEventStream();
+			stream.push({ type: "done", reason: "stop", message: {
+				role: "assistant", content: [{ type: "text", text: "Fixture response." }],
+				api: model.api, provider: model.provider, model: model.id, stopReason: "stop", timestamp: Date.now(),
+				usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			} });
+			return stream;
+		};
+		await session.bindExtensions({ mode: "print" });
+		return session;
+	} catch (error) {
+		session.dispose();
+		throw error;
+	}
+}
 
 test("all agent definitions and the shared reference preserve Pi-parsed metadata and text", () => {
 	execFileSync(process.execPath, [fileURLToPath(new URL("./build.mjs", import.meta.url)), "--check"], { stdio: "pipe" });
@@ -70,40 +102,164 @@ test("Pi compiles the snippet catalog and preserves the remaining 12 snippet cod
 		const { extensions, errors } = loader.getExtensions();
 		assert.deepEqual(errors, []);
 		assert.equal(extensions.length, 2);
-		({ session } = await createAgentSession({ cwd: temp, agentDir: temp, resourceLoader: loader, sessionManager: SessionManager.inMemory() }));
-		await session.bindExtensions({ mode: "print" });
+		const requests = [];
+		session = await createOfflineSession(temp, loader, (messages) => requests.push(userText(messages)));
+		const submit = async () => {
+			const count = requests.length;
+			await session.prompt("Check this.");
+			assert.equal(requests.length, count + 1);
+			return requests.at(-1).at(-1);
+		};
 		const extension = extensions.find(({ commands }) => commands.has("snippet"));
 		assert(session.getActiveToolNames().includes("trace_append"));
 		const notices = [];
 		const ctx = { hasUI: true, mode: "print", ui: { notify: (text) => notices.push(text) } };
-		const input = extension.handlers.get("input")[0];
 		const command = extension.commands.get("snippet").handler;
-		const event = { text: "Check this." };
 		await command("list", ctx);
 		assert.equal(digest(notices.pop()), baseline.snippetListSha256, "snippet list (includes order, names and descriptions)");
-		assert.equal(await input(event, ctx), undefined);
+		assert.equal(await submit(), "Check this.");
 		await command("a12", ctx);
 		assert.ok(notices.some((text) => /Unknown snippet code: a12/.test(text)), "the old update snippet is retired");
-		assert.equal(await input(event, ctx), undefined);
+		assert.equal(await submit(), "Check this.");
 		for (const [code, expected] of Object.entries(baseline.snippetMessages)) {
 			await command(code, ctx);
 			assert.match(notices.pop(), new RegExp(`^Enabled for the next prompt: ${code} `));
-			const transformed = await input(event, ctx);
-			assert.equal(transformed?.action, "transform", code);
-			assert.equal(digest(transformed.text), expected, `${code}: transformed message`);
-			assert.equal(await input(event, ctx), undefined, `${code} should reset after one message`);
+			assert.equal(digest(await submit()), expected, `${code}: projected message`);
+			assert.equal(await submit(), "Check this.", `${code} should reset after one message`);
+			assert.ok(requests.at(-1).every((text) => text === "Check this."), `${code} should not be saved in history`);
 		}
 		await command("a1", ctx);
 		// Change availability after the snippet was selected; delivery must recheck it.
 		session.setActiveToolsByName(session.getActiveToolNames().filter((name) => name !== "trace_append"));
 		assert(session.getActiveToolNames().includes("trace_query"));
-		const masked = (await input(event, ctx)).text;
+		const masked = await submit();
 		assert.match(masked, /Verify critical facts/);
 		assert.doesNotMatch(masked, /trace id|read the trace|outline\/get\/evidence/);
 		await command("a2", ctx);
-		const seed = (await input(event, ctx)).text;
+		const seed = await submit();
 		assert.match(seed, /what would change our mind\./);
 		assert.doesNotMatch(seed, /Point to the trace/);
+	} finally {
+		session?.dispose();
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("queued snippets survive administrative commands and accompany expanded and loop-like submissions", async () => {
+	const temp = mkdtempSync(join(tmpdir(), "pi-snippet-delivery-"));
+	let session;
+	try {
+		const textBlock = (text) => ({ type: "text", text });
+		let forceWakeTimestamp = false;
+		let liveWake;
+		const skillDir = join(temp, "fixture-skill");
+		const skillPath = join(skillDir, "SKILL.md");
+		const templatePath = join(temp, "fixture-template.md");
+		mkdirSync(skillDir);
+		writeFileSync(skillPath, "---\nname: fixture-skill\ndescription: Exercise native expansion.\n---\nLoaded skill body.\n");
+		writeFileSync(templatePath, "Expanded template: $1\n");
+		const loader = new DefaultResourceLoader({
+			cwd: temp, agentDir: temp, noExtensions: true, noSkills: true, noPromptTemplates: true,
+			additionalExtensionPaths: [fileURLToPath(new URL("extensions/prompt-snippets/index.ts", repo))],
+			additionalSkillPaths: [skillPath], additionalPromptTemplatePaths: [templatePath],
+			extensionFactories: [(pi) => {
+				const loopMessage = (text) => ({ customType: "pi-loop", content: [textBlock(text)], display: false });
+				pi.registerCommand("fixture-admin", {
+					handler(args) {
+						pi.sendMessage(loopMessage(args || "History only."), { triggerTurn: false });
+					},
+				});
+				pi.registerCommand("fixture-wake", {
+					handler(args) {
+						pi.sendMessage(loopMessage(args), { triggerTurn: true, deliverAs: "steer" });
+					},
+				});
+				pi.on("message_end", ({ message }) => {
+					if (!forceWakeTimestamp || message.role !== "custom" || message.customType !== "pi-loop") return;
+					// Pi updates the live message in place but timestamps the entry separately.
+					liveWake = message;
+					return { message: { ...message, timestamp: -1 } };
+				});
+			}],
+		});
+		await loader.reload();
+		assert.deepEqual(loader.getExtensions().errors, []);
+		const requests = [];
+		let whileRunning;
+		session = await createOfflineSession(temp, loader, async (messages) => {
+			requests.push(messages);
+			const callback = whileRunning;
+			whileRunning = undefined;
+			await callback?.();
+		});
+		const latest = () => userText(requests.at(-1));
+		const select = () => session.prompt("/snippet a1");
+		const wake = async (text) => {
+			await session.prompt(`/fixture-wake ${text}`);
+			await session.waitForIdle();
+		};
+		const snippetBody = /Verify critical facts/;
+
+		await select();
+		await session.prompt("/fixture-admin");
+		assert.equal(requests.length, 0, "history-only custom message must not start a request");
+		await session.prompt("/skill:fixture-skill Skill arguments.");
+		assert.match(latest().at(-1), /<skill name="fixture-skill"[\s\S]*Loaded skill body\.[\s\S]*<\/skill>\n\nSkill arguments\./);
+		assert.match(latest().at(-1), snippetBody);
+
+		await select();
+		await session.prompt("/fixture-template value");
+		assert.match(latest().at(-1), /Expanded template: value/);
+		assert.match(latest().at(-1), snippetBody);
+
+		const idleWakeText = "Idle wake.";
+		await select();
+		const beforeIdle = requests.length;
+		await session.prompt(`/fixture-admin ${idleWakeText}`);
+		assert.equal(requests.length, beforeIdle, "identical history must not start a request");
+		forceWakeTimestamp = true;
+		try {
+			await wake(idleWakeText);
+		} finally {
+			forceWakeTimestamp = false;
+		}
+		assert.equal(requests.length, beforeIdle + 1);
+		const persistedWake = session.sessionManager.getBranch().findLast(({ type }) => type === "custom_message");
+		assert.deepEqual(persistedWake?.content, [textBlock(idleWakeText)]);
+		assert.equal(liveWake?.timestamp, -1, "fixture must change the live wake timestamp");
+		const persistedTimestamp = Date.parse(persistedWake.timestamp);
+		assert.ok(Number.isFinite(persistedTimestamp));
+		assert.notEqual(liveWake.timestamp, persistedTimestamp, "wake timestamps must differ");
+
+		const [historyMessage, wakeMessage] = requests.at(-1).slice(-2);
+		assert.equal(historyMessage.role, "user");
+		assert.equal(wakeMessage.role, "user");
+		assert.equal(wakeMessage.timestamp, persistedTimestamp, "request must use the persisted wake timestamp");
+		const snippetText = wakeMessage.content[0]?.text;
+		assert.match(snippetText, /^<prompt_snippets>\n[\s\S]*\n<\/prompt_snippets>$/);
+		assert.match(snippetText, snippetBody);
+		assert.deepEqual([historyMessage.content, wakeMessage.content], [
+			[textBlock(idleWakeText)],
+			[textBlock(snippetText), textBlock(idleWakeText)],
+		], "only the live wake receives one snippet block, after unchanged history");
+		await wake("Second wake.");
+		assert.equal(requests.length, beforeIdle + 2);
+		assert.deepEqual(requests.at(-1).at(-1).content, [textBlock("Second wake.")]);
+		assert.doesNotMatch(latest().join("\n"), snippetBody);
+
+		const before = requests.length;
+		whileRunning = async () => {
+			await select();
+			await session.prompt("/fixture-admin");
+			await session.prompt("/fixture-wake Steered wake.");
+		};
+		await session.prompt("Start a run.");
+		assert.equal(requests.length, before + 2);
+		assert.doesNotMatch(userText(requests[before]).join("\n"), snippetBody);
+		assert.match(latest().at(-2), snippetBody);
+		assert.equal(latest().at(-1), "Steered wake.");
+		await session.prompt("Clean follow-up.");
+		assert.doesNotMatch(latest().join("\n"), snippetBody);
 	} finally {
 		session?.dispose();
 		rmSync(temp, { recursive: true, force: true });
@@ -147,8 +303,8 @@ test("a renamed snippet mirror is checked, never delivered, and pruned without t
 		await loader.reload();
 		const { extensions, errors } = loader.getExtensions();
 		assert.deepEqual(errors, []);
-		({ session } = await createAgentSession({ cwd: temp, agentDir: temp, resourceLoader: loader, sessionManager: SessionManager.inMemory() }));
-		await session.bindExtensions({ mode: "print" });
+		const requests = [];
+		session = await createOfflineSession(temp, loader, (messages) => requests.push(userText(messages)));
 		const notices = [];
 		const ctx = { hasUI: true, mode: "print", ui: { notify: (text) => notices.push(text) } };
 		const command = extensions.find(({ commands }) => commands.has("snippet")).commands.get("snippet").handler;
@@ -158,9 +314,11 @@ test("a renamed snippet mirror is checked, never delivered, and pruned without t
 		assert.match(notices.at(-1), /a803 Handwritten Fixture/);
 		await command("a801", ctx);
 		assert.match(notices.join("\n"), /Unknown snippet code: a801/);
-		assert.equal((await session.extensionRunner.emitInput("Check this.", undefined, "interactive")).action, "continue");
+		await session.prompt("Check this.");
+		assert.deepEqual(requests.at(-1), ["Check this."]);
 		await command("a803", ctx);
-		assert.match((await session.extensionRunner.emitInput("Check this.", undefined, "interactive")).text, /User-written body\./);
+		await session.prompt("Check this.");
+		assert.match(requests.at(-1).at(-1), /User-written body\./);
 
 		build();
 		assert.throws(() => readFileSync(stale, "utf8"), { code: "ENOENT" });
@@ -244,10 +402,11 @@ test("catalog child uses its own settled tool selection, including the profile m
 					writeFileSync(settingsFile, JSON.stringify({ packages: [] }));
 					session.setActiveToolsByName([...startupTools, "trace_append"]);
 					assert(session.getActiveToolNames().includes("trace_append"));
-					const input = await session.extensionRunner.emitInput("Check this.", undefined, "interactive");
-					assert.equal(input.action, "transform");
-					assert.match(input.text, /Verify critical facts/);
-					assert.doesNotMatch(input.text, /trace id|read the trace|outline\/get\/evidence/);
+					const message = { role: "user", content: [{ type: "text", text: "Check this." }], timestamp: Date.now() };
+					await session.extensionRunner.emit({ type: "message_start", message });
+					const [text] = userText(await session.extensionRunner.emitContext([message]));
+					assert.match(text, /Verify critical facts/);
+					assert.doesNotMatch(text, /trace id|read the trace|outline\/get\/evidence/);
 				}
 				const selectedTools = session.getActiveToolNames();
 				assert.equal(selectedTools.includes("trace_append"), mode !== "unavailable", mode);
